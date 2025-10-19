@@ -14,6 +14,7 @@ COPY . .
 
 # 安装 Composer 并安装依赖
 RUN curl -sS https://getcomposer.org/installer | php && \
+    php composer.phar clear-cache && \
     php composer.phar install --no-interaction --no-dev --optimize-autoloader
 
 # 设置文件权限
