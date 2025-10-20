@@ -222,7 +222,16 @@
 
     function saveHistoryEntry(questions) {
       const entry = {
-        time: new Date().toLocaleString(),
+        time: new Date().toLocaleString('en-US', {
+          weekday: 'short',  // e.g., Sun, Mon
+          year: 'numeric',
+          month: 'short',    // e.g., Oct
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true       // use AM/PM format
+        }),
         questions
       };
       history.unshift(entry);
@@ -231,6 +240,7 @@
       updateHistoryUI();
       historySection.classList.remove('hidden');
     }
+
 
     function updateHistoryUI() {
       historyList.innerHTML = history.map(h => `
