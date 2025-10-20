@@ -1,5 +1,5 @@
 # === Laravel + PHP 8.3 + OpenAI API ===
-FROM php:8.3-fpm
+FROM mirror.gcr.io/library/php:8.3-fpm
 
 # 系统依赖
 RUN apt-get update && apt-get install -y \
