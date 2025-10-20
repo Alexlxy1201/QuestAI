@@ -4,10 +4,10 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SolveController;
 
 // === 🏠 Home Page ===
-Route::get('/home', function () {
+Route::get('/', function () {
     return view('home');
-});
-Route::redirect('/', '/home');
+})->name('home'); // 👈 这一行必须有！
+
 
 // === 📘 Quiz Solver Page ===
 Route::get('/solve', [SolveController::class, 'index'])->name('solve.index');
