@@ -4,7 +4,9 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SolveController;
 
 // === 🏠 Home Page ===
-Route::get('/home', fn() => view('home'))->name('home');
+Route::get('/home', function () {
+    return view('home');
+});
 Route::redirect('/', '/home');
 
 // === 📘 Quiz Solver Page ===
