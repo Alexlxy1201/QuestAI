@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Http;
 use App\Http\Controllers\SolveController;
+use App\Http\Controllers\GradeController;
 
 /*
 |--------------------------------------------------------------------------
@@ -53,7 +54,6 @@ PROMPT;
         $json = json_decode($content, true);
 
         return response()->json(['ok' => true, 'data' => $json]);
-
     } catch (\Throwable $e) {
         return response()->json(['ok' => false, 'error' => $e->getMessage()]);
     }
@@ -82,7 +82,7 @@ Return a JSON in this exact format:
 }
 
 Text:
-\"\"\"{$text}\"\"\"
+\"\"\"{$text}\"\"\" 
 PROMPT;
 
     try {
@@ -111,3 +111,6 @@ PROMPT;
 
 // === 📘 Quiz Solver ===
 Route::post('/solve', [SolveController::class, 'solve']);
+
+// === 🏫 AI Grader ===
+Route::post('/grader', [GradeController::class, 'evaluate']);
