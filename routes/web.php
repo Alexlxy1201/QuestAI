@@ -2,12 +2,12 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SolveController;
+use App\Http\Controllers\GradeController;
 
 // === 🏠 Home Page ===
 Route::get('/', function () {
     return view('home');
-})->name('home'); // 👈 这一行必须有！
-
+})->name('home');
 
 // === 📘 Quiz Solver Page ===
 Route::get('/solve', [SolveController::class, 'index'])->name('solve.index');
@@ -18,6 +18,10 @@ Route::get('/corrector', fn() => view('corrector'))->name('corrector.index');
 // === 🧠 Quiz Generator Page ===
 Route::get('/generator', fn() => view('generator'))->name('generator.index');
 
+// === 🏫 AI Grader Page ===
+Route::get('/grader', [GradeController::class, 'index'])->name('grader');
+Route::post('/grader', [GradeController::class, 'evaluate'])->name('grader.evaluate');
+
 // === 🧾 Environment check ===
 Route::get('/envcheck', function () {
     return response()->json([
@@ -27,7 +31,3 @@ Route::get('/envcheck', function () {
         'key_preview' => substr(env('OPENAI_API_KEY') ?? '', 0, 8),
     ]);
 });
-use App\Http\Controllers\GradeController;
-
-Route::get('/grader', [GradeController::class, 'index'])->name('grader');
-Route::post('/grader', [GradeController::class, 'evaluate'])->name('grader.evaluate');
