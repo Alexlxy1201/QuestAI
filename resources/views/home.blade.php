@@ -40,7 +40,7 @@
       <a href="{{ url('/grader') }}" 
          class="group relative overflow-hidden rounded-2xl p-6 bg-white border-2 border-transparent shadow-md hover:border-amber-500 hover:shadow-amber-200 transition transform hover:-translate-y-1">
         <div class="text-4xl mb-3">🏫</div>
-        <div class="font-bold text-xl mb-1 text-gray-900 group-hover:text-amber-700">AI Grader (Essay Evaluation)</div>
+        <div class="font-bold text-xl mb-1 text-gray-900 group-hover:text-amber-700">AI Grader</div>
         <p class="text-sm text-gray-500">Upload answers for instant grading and feedback</p>
       </a>
     </div>
