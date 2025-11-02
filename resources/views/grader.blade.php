@@ -8,8 +8,9 @@
     🏫 AI Grader (Q&A Evaluation)
   </h1>
   <p class="text-gray-600 mb-6">
-    Upload or take a photo of the student's written answer. The AI will read and grade it automatically.<br>
-    <small>(No data stored)</small>
+    Upload or take a photo of the student's written answer.<br>
+    The AI will read and grade it automatically.<br>
+    <small>(No data is stored)</small>
   </p>
 
   {{-- Rubric --}}
@@ -17,7 +18,7 @@
     <h2 class="font-semibold text-green-800 mb-1">📋 Grading Rubric (100 pts)</h2>
     <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
       <li><b>Content Completeness (40)</b> – Addresses all parts of the question.</li>
-      <li><b>Logical Clarity (30)</b> – Coherent, logical explanation.</li>
+      <li><b>Logical Clarity (30)</b> – Coherent and logical explanation.</li>
       <li><b>Language Use (20)</b> – Grammar and vocabulary accuracy.</li>
       <li><b>Originality (10)</b> – Creativity or insight in response.</li>
     </ul>
@@ -61,7 +62,7 @@ const loading = document.getElementById('loading');
 
 let compressedDataURL = null;
 
-// compress same as Quiz Solver
+// compress image to max 800px
 function compressImage(dataURL, maxEdge = 800, quality = 0.8) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -107,12 +108,9 @@ gradeBtn.addEventListener('click', async () => {
   resultDiv.innerHTML = '';
 
   try {
-    const res = await fetch('{{ route('grader.evaluate') }}', {
+    const res = await fetch('/api/grader', {  // ✅ 改成 API 路由
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         student_name: studentName,
         image: compressedDataURL

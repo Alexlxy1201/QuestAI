@@ -1,27 +1,27 @@
-# === Laravel + PHP 8.3 + OpenAI API ===
-FROM mirror.gcr.io/library/php:8.3-fpm
+# === Laravel + PHP 8.3 + OpenAI API (for Railway) ===
+FROM php:8.3-fpm
 
-# 系统依赖
+# 安装系统依赖
 RUN apt-get update && apt-get install -y \
-    git curl unzip libzip-dev libonig-dev libpng-dev libicu-dev && \
+    git curl unzip libzip-dev libpng-dev libonig-dev libicu-dev && \
     docker-php-ext-install pdo pdo_mysql zip intl mbstring gd
 
 # 工作目录
 WORKDIR /app
 
-# 先复制全部项目（让 artisan 存在）
+# 复制项目文件
 COPY . .
 
-# 安装 Composer 并安装依赖
+# 安装 Composer 依赖
 RUN curl -sS https://getcomposer.org/installer | php && \
-    php composer.phar clear-cache && \
-    php composer.phar install --no-interaction --no-dev --optimize-autoloader
+    php composer.phar install --no-dev --optimize-autoloader && \
+    rm -f php composer.phar
 
-# 设置文件权限
+# 修复权限
 RUN chmod -R 775 storage bootstrap/cache
 
-# 开放端口
+# 暴露 Railway 端口（Railway 会自动设置 $PORT）
 EXPOSE 8080
 
-# 启动 Laravel 内置服务器
-CMD php artisan serve --host=0.0.0.0 --port=8080
+# 🧠 启动命令 — 使用 $PORT 而不是固定 8080
+CMD php artisan serve --host=0.0.0.0 --port=${PORT:-8080}
