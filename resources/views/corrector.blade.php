@@ -133,7 +133,7 @@
     saveBtn.addEventListener('click', () => {
       alert('Saved to history.');
     });
-
+    
     function updateHistoryUI() {
       historyList.innerHTML = history.map(h => `
         <details class="bg-white rounded-lg p-3 shadow-md">
