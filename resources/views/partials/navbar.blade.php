@@ -35,7 +35,7 @@
         <a href="{{ route('corrector.index') }}"
           class="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 
           {{ request()->routeIs('corrector.*') 
-              ? 'bg-gradient-to-r from-emerald-600 to-green-700 text-green shadow-md scale-105' 
+              ? 'bg-gradient-to-r from-emerald-600 to-green-700 text-white shadow-md scale-105' 
               : 'text-gray-700 hover:text-emerald-700 hover:bg-emerald-50' }}">
           ✍️ Corrector
         </a>
@@ -48,6 +48,16 @@
               : 'text-gray-700 hover:text-purple-700 hover:bg-purple-50' }}">
           🧠 Generator
         </a>
+
+        {{-- 🏫 Grader (New) --}}
+        <a href="{{ route('grader') }}"
+          class="px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 
+          {{ request()->routeIs('grader*') 
+              ? 'bg-gradient-to-r from-yellow-500 to-orange-600 text-white shadow-md scale-105' 
+              : 'text-gray-700 hover:text-yellow-700 hover:bg-yellow-50' }}">
+          🏫 Grader
+        </a>
+
       </div>
 
       {{-- Mobile menu button --}}
@@ -84,6 +94,13 @@
         class="block px-3 py-2 rounded-md text-base font-medium 
         {{ request()->routeIs('generator.*') ? 'bg-purple-100 text-purple-700' : 'text-gray-700 hover:bg-gray-100' }}">
         🧠 Generator
+      </a>
+
+      {{-- 🏫 Grader (New Mobile Item) --}}
+      <a href="{{ route('grader') }}" 
+        class="block px-3 py-2 rounded-md text-base font-medium 
+        {{ request()->routeIs('grader*') ? 'bg-yellow-100 text-yellow-700' : 'text-gray-700 hover:bg-gray-100' }}">
+        🏫 Grader
       </a>
     </div>
   </div>

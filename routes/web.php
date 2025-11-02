@@ -27,3 +27,7 @@ Route::get('/envcheck', function () {
         'key_preview' => substr(env('OPENAI_API_KEY') ?? '', 0, 8),
     ]);
 });
+use App\Http\Controllers\GradeController;
+
+Route::get('/grader', [GradeController::class, 'index'])->name('grader');
+Route::post('/grader', [GradeController::class, 'evaluate'])->name('grader.evaluate');
