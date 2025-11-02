@@ -4,9 +4,10 @@
 
 @section('content')
 <div class="bg-white shadow-2xl rounded-2xl p-6 w-full max-w-3xl text-center transition-all duration-300">
-  <h1 class="text-3xl font-extrabold mb-3 bg-gradient-to-r from-emerald-600 to-green-600 bg-clip-text text-transparent">
-    🏫 AI Grader (Q&A Evaluation)
-  </h1>
+<h1 class="text-3xl font-extrabold mb-3 bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 bg-clip-text text-transparent">
+  🏫 AI Grader (Q&A Evaluation)
+</h1>
+
   <p class="text-gray-600 mb-6">
     Upload or take a photo of the student's written answer.<br>
     The AI will read and grade it automatically.<br>

@@ -7,11 +7,17 @@ use Illuminate\Support\Facades\Http;
 
 class GradeController extends Controller
 {
+    public function index()
+    {
+        // 👇 显示打分页面
+        return view('grader');
+    }
+
     public function evaluate(Request $request)
     {
         $request->validate([
             'student_name' => 'required|string',
-            'image' => 'required|string', // base64 Data URL
+            'image' => 'required|string',
         ]);
 
         $student = $request->input('student_name');
@@ -34,10 +40,9 @@ Return the result in clear English with:
 Student name: {$student}
 ";
 
-        // === GPT-4o Vision Request ===
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
-            'Content-Type'  => 'application/json',
+            'Content-Type' => 'application/json',
         ])->post('https://api.openai.com/v1/chat/completions', [
             'model' => 'gpt-4o',
             'messages' => [
@@ -46,7 +51,7 @@ Student name: {$student}
                     'role' => 'user',
                     'content' => [
                         ['type' => 'text', 'text' => $prompt],
-                        ['type' => 'image_url', 'image_url' => ['url' => $imageData]]
+                        ['type' => 'image_url', 'image_url' => ['url' => $imageData]],
                     ],
                 ],
             ],
@@ -67,7 +72,7 @@ Student name: {$student}
             'data' => [
                 'student' => $student,
                 'grade'   => $gradeText,
-            ]
+            ],
         ]);
     }
 }
