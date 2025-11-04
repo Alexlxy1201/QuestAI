@@ -176,13 +176,12 @@
   </div>
 </div>
 
-{{-- ===== 简单样式：标注颜色（可按需微调） ===== --}}
+{{-- ===== 样式 ===== --}}
 <style>
   .annot-ins { background: #DCFCE7; border-radius: .25rem; text-decoration: none; }
   .annot-del { background: #FEE2E2; border-radius: .25rem; text-decoration: line-through; }
   #diffHtml ins { background: #DCFCE7; text-decoration: none; padding: 0 .15rem; border-radius: .2rem; }
   #diffHtml del { background: #FEE2E2; padding: 0 .15rem; border-radius: .2rem; }
-
   #overlay { position: fixed; inset: 0; background: rgba(255,255,255,.6); display: none; align-items: center; justify-content: center; z-index: 60; backdrop-filter: blur(2px); }
   #overlay.show { display: flex; }
 </style>
@@ -415,7 +414,7 @@ Part 2：
     resultCard.classList.remove('hidden');
     badgeRubric.textContent = rubricCode || '-';
 
-    // ✅ 缓存最近一次评分（供导出）
+    // 缓存最近一次评分（供导出）
     window.__lastGrade = payload;
 
     const s = payload.scores || {};
@@ -475,62 +474,114 @@ Part 2：
   function buildLCS(a,b){ const n=a.length,m=b.length,dp=Array.from({length:n+1},()=>Array(m+1).fill(0)); for(let i=n-1;i>=0;i--){ for(let j=m-1;j>=0;j--){ dp[i][j]=(a[i]===b[j])?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]); } } const path=[]; let i=0,j=0; while(i<n&&j<m){ if(a[i]===b[j]){ path.push([i,j]); i++; j++; } else if(dp[i+1][j]>=dp[i][j+1]) i++; else j++; } return path; }
   function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
-  // ===== 导出 DOCX ：把评分等字段一并发送 =====
-  btnExportDocx.addEventListener('click', async ()=>{
-    const corrected = (essayText.value || '').trim();
-    if(!corrected){ alert('没有可导出的内容'); return; }
+  // ===== 导出 DOCX（修正版）：确保 extracted/ corrected/ explanations 满足后端验证 =====
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btnExportDocx');
+    if (!btn) return;
 
-    const last = window.__lastGrade || {};
-    const rationalesFromDom = Array.from(document.querySelectorAll('#rationaleList li')).map(li => li.textContent);
+    btn.addEventListener('click', async (ev) => {
+      ev.preventDefault();
+      console.log('[Export] click');
 
-    const body = JSON.stringify({
-      title: document.getElementById('title').value || 'Essay Report',
-      rubric: document.getElementById('rubric').value || '',
-      extracted: document.getElementById('origText')?.textContent || '',
-      corrected: corrected,
-      scores: last.scores || {},
-      suggestions: last.suggestions || [],
-      rationales: [
-        ...(last.rationales || []),
-        ...(last.explanations || []),
-        ...(last.criteria_explanations || []),
-        ...(last.rubric_breakdown || []),
-        ...rationalesFromDom
-      ].slice(0, 50)
-    });
+      const oldLabel = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Exporting…';
 
-    const tryUrls = [
-      "{{ url('/api/essay/export-docx') }}",
-      "{{ url('/index.php/api/essay/export-docx') }}",
-      "{{ url('/essay/export-docx-direct') }}",
-      "{{ url('/index.php/essay/export-docx-direct') }}",
-    ];
-
-    for (const u of tryUrls) {
       try {
-        const res = await fetch(u, { method:'POST', headers:{ 'Content-Type': 'application/json' }, body });
-        const ct = (res.headers.get('content-type') || '').toLowerCase();
-        if (res.ok && ct.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
-          const blob = await res.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url; a.download = 'essay-report.docx';
-          document.body.appendChild(a); a.click(); a.remove();
-          URL.revokeObjectURL(url);
-          return;
-        } else {
-          const text = await res.text();
-          console.warn('Not DOCX from', u, res.status, ct, text.slice(0, 400));
-        }
-      } catch (e) {
-        console.warn('Export request failed for', u, e);
-      }
-    }
+        const editorText = (essayText.value || '').trim();
+        const origDom = document.getElementById('origText');
+        // 后端必需：extracted / corrected
+        let extracted = (origDom?.textContent || '').trim();
+        let corrected = editorText;
 
-    alert('❌ 导出失败：后端未返回 DOCX（路由未命中或被重定向到页面）。');
+        // 兜底：如果没跑过“Extract + Score”，origText 为空，就用编辑器内容填充 extracted
+        if (!extracted) extracted = editorText;
+
+        if (!corrected) {
+          alert('没有可导出的内容（编辑区为空）');
+          return;
+        }
+
+        // 解释数组：后端字段名是 explanations
+        const fromDom = Array.from(document.querySelectorAll('#rationaleList li')).map(li => li.textContent);
+        const last = window.__lastGrade || {};
+        const explanations = [
+          ...(last.rationales || []),
+          ...(last.explanations || []),
+          ...(last.criteria_explanations || []),
+          ...(last.rubric_breakdown || []),
+          ...fromDom
+        ].filter(Boolean).slice(0, 50);
+
+        const payload = {
+          title: document.getElementById('title').value || 'Essay Report',
+          extracted,
+          corrected,
+          explanations
+        };
+
+        const tryUrls = [
+          "{{ route('api.essay.exportDocx') }}",
+          "{{ url('/essay/export-docx-direct') }}",
+        ];
+
+        for (const u of tryUrls) {
+          console.log('[Export] try:', u);
+          try {
+            const res = await fetch(u, {
+              method:'POST',
+              headers:{
+                'Content-Type':'application/json',
+                'Accept':'application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/octet-stream'
+              },
+              body: JSON.stringify(payload)
+            });
+
+            const ct = (res.headers.get('content-type') || '').toLowerCase();
+            const cd = res.headers.get('content-disposition') || '';
+            const blob = await res.blob();
+
+            const okDoc =
+              res.ok && (
+                ct.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
+                ct.includes('application/octet-stream') ||
+                /filename=.*\.docx/i.test(cd) ||
+                (blob && blob.size > 1000)
+              );
+
+            if (okDoc) {
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              const m = cd.match(/filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i);
+              const fname = m ? decodeURIComponent(m[1] || m[2]) : 'essay-report.docx';
+              a.href = url; a.download = fname.endsWith('.docx') ? fname : (fname + '.docx');
+              document.body.appendChild(a); a.click(); a.remove();
+              URL.revokeObjectURL(url);
+              console.log('[Export] success via', u);
+              return;
+            } else {
+              const text = await blob.text();
+              console.warn('[Export] Not DOCX:', { u, status: res.status, ct, cd, head: text.slice(0, 200) });
+            }
+          } catch (e) {
+            console.warn('[Export] fetch error', u, e);
+          }
+        }
+
+        alert('❌ 导出失败：后端未返回 DOCX（检查控制台 Network/Console 日志与 Railway 重写规则）。');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = oldLabel;
+      }
+    });
   });
 
-  function pushHistory(item){ history.unshift(item); history = history.slice(0, 50); localStorage.setItem('essayProHistory', JSON.stringify(history)); renderHistory(); }
+  function pushHistory(item){
+    history.unshift(item);
+    history = history.slice(0, 50);
+    localStorage.setItem('essayProHistory', JSON.stringify(history));
+    renderHistory();
+  }
+
   function renderHistory(){
     historyList.innerHTML = history.map((h,idx)=>`
       <details class="bg-gray-50 rounded-lg p-3 border">

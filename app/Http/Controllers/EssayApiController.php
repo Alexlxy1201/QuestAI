@@ -507,4 +507,25 @@ PROMPT;
 
         return asset('storage/essay_reports/'.$filename);
     }
+    public function exportDocxSmoke()
+{
+    if (!class_exists(\PhpOffice\PhpWord\PhpWord::class)) {
+        return response()->json(['ok'=>false,'error'=>'PhpWord not installed'], 500);
+    }
+    $w = new \PhpOffice\PhpWord\PhpWord();
+    $s = $w->addSection();
+    $s->addTitle('Smoke OK', 1);
+    $s->addText('If you see this in a Word file, the route/headers are fine.');
+
+    return response()->streamDownload(function () use ($w) {
+        \PhpOffice\PhpWord\IOFactory::createWriter($w, 'Word2007')->save('php://output');
+    }, 'smoke-test.docx', [
+        'Content-Type'              => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition'       => 'attachment; filename="smoke-test.docx"',
+        'Cache-Control'             => 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma'                    => 'no-cache',
+        'X-Accel-Buffering'         => 'no',
+    ]);
+}
+
 }

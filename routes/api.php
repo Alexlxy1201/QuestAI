@@ -3,47 +3,53 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Http;
+
 use App\Http\Controllers\SolveController;
 use App\Http\Controllers\GradeController;
 use App\Http\Controllers\EssayApiController;
 
 /*
 |--------------------------------------------------------------------------
-| Essay Pro APIs
-| 说明：
-| - 仍保留老接口路径，避免前端 404。
-| - 历史相关接口改为返回“本地存储策略，不再支持服务端历史”。
+| API Routes  (prefix: /api, 无 CSRF)
+|--------------------------------------------------------------------------
+| 注意：
+| 1) 这里不要重复注册同一路由（你之前贴的文件里同一行出现了两次）。
+| 2) /essay/export-docx-test 是“烟囱测试”，先确保下载 DOCX 正常。
 |--------------------------------------------------------------------------
 */
-Route::post('/essay/direct-correct', [EssayApiController::class, 'directCorrect'])->name('api.essay.directCorrect');
+
+// ========= Essay Pro =========
+
+// 直接「提取+润色」
+Route::post('/essay/direct-correct', [EssayApiController::class, 'directCorrect'])
+    ->name('api.essay.directCorrect');
+
+// 导出 DOCX（正式）
 Route::post('/essay/export-docx', [EssayApiController::class, 'exportDocx'])
-    ->withoutMiddleware([\App\Http\Middleware\VerifyCsrfToken::class]); // 取消 CSRF
+    ->name('api.essay.exportDocx');
 
-// 传统 OCR / 打分：依然可用（不强制落库）
+// 导出 DOCX（烟囱测试：仅返回“Hello”文档，排查路由/响应头/平台重写）
+Route::post('/essay/export-docx-test', [EssayApiController::class, 'exportDocxSmoke'])
+    ->name('api.essay.exportDocxSmoke');
+
+// 传统 OCR / 打分
 Route::post('/ocr',   [EssayApiController::class, 'ocr'])->name('api.ocr');
 Route::post('/grade', [EssayApiController::class, 'grade'])->name('api.grade');
 
-Route::post('/essay/direct-correct', [EssayApiController::class, 'directCorrect'])->name('api.essay.directCorrect');
-Route::post('/essay/export-docx',     [EssayApiController::class, 'exportDocx'])->name('api.essay.exportDocx');
-Route::post('/ocr',   [EssayApiController::class, 'ocr'])->name('api.ocr');
-Route::post('/grade', [EssayApiController::class, 'grade'])->name('api.grade');
+// 历史：仅本地存储（兼容旧前端）
+Route::get('/essay/history', fn () => response()->json([
+    'ok' => false,
+    'error' => 'History is stored locally (browser localStorage).',
+], 410))->name('api.essay.history');
 
-// 历史：为了兼容老前端，但现在“仅本地存储”，服务端返回 410
-Route::get('/essay/history', function () {
-    return response()->json([
-        'ok' => false,
-        'error' => 'History is stored locally in the browser (localStorage) on this domain.',
-    ], 410);
-})->name('api.essay.history');
+Route::get('/essay/history/export', fn () => response()->json([
+    'ok' => false,
+    'error' => 'Server-side export disabled. Use client export instead.',
+], 410))->name('api.essay.history.export');
 
-Route::get('/essay/history/export', function () {
-    return response()->json([
-        'ok' => false,
-        'error' => 'Export from server is disabled. Use client export (localStorage) instead.',
-    ], 410);
-})->name('api.essay.export');
+// ========= 其它保留示例 =========
 
-// ✍️ English Corrector（保留旧示例）
+// 英语纠错（示例）
 Route::post('/correct', function (Request $request) {
     $text = trim($request->input('text', ''));
     if (!$text) return response()->json(['ok' => false, 'error' => 'No text provided.']);
@@ -87,13 +93,11 @@ PROMPT;
     }
 });
 
-// Health：有人误用 GET /api/solve 就给提示
-Route::get('/solve', fn () => response()->json(['ok' => true, 'hint' => 'Use POST /api/solve'], 200));
-
 // Quiz Solver
+Route::get('/solve', fn () => response()->json(['ok' => true, 'hint' => 'Use POST /api/solve'], 200));
 Route::post('/solve', [SolveController::class, 'solve']);
 
-// 🧠 Quiz Generator（保留旧示例）
+// 题目生成（示例）
 Route::post('/generate-quiz', function (Request $request) {
     $text  = trim($request->input('text', ''));
     $count = intval($request->input('count', 5));
@@ -140,5 +144,5 @@ PROMPT;
     }
 });
 
-// 🏫 AI Grader（如需单独接口）
+// Grader（如果用得到）
 Route::post('/grader', [GradeController::class, 'evaluate']);

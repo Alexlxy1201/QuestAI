@@ -1,0 +1,12 @@
+HTTP/1.1 200 OK
+Host: 127.0.0.1:8000
+Connection: close
+X-Powered-By: PHP/8.2.12
+Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+Content-Disposition: attachment; filename=smoke-test.docx
+Cache-Control: max-age=0, must-revalidate, no-cache, no-store, private
+Pragma: no-cache
+X-Accel-Buffering: no
+Date: Tue, 04 Nov 2025 18:32:15 GMT
+Access-Control-Allow-Origin: *
+
