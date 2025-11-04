@@ -18,6 +18,8 @@ use App\Http\Middleware\VerifyCsrfToken;
 Route::post('/solve', [SolveController::class, 'solve'])
     ->withoutMiddleware([VerifyCsrfToken::class])
     ->name('solve.post');
+Route::post('/essay/export-docx', [EssayApiController::class, 'exportDocx'])
+    ->withoutMiddleware([\App\Http\Middleware\VerifyCsrfToken::class]); // 取消 CSRF
 
 // 🏠 Home
 Route::get('/', fn() => view('home'))->name('home');

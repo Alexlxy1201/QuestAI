@@ -16,7 +16,8 @@ use App\Http\Controllers\EssayApiController;
 |--------------------------------------------------------------------------
 */
 Route::post('/essay/direct-correct', [EssayApiController::class, 'directCorrect'])->name('api.essay.directCorrect');
-Route::post('/essay/export-docx',    [EssayApiController::class, 'exportDocx'])->name('api.essay.exportDocx');
+Route::post('/essay/export-docx', [EssayApiController::class, 'exportDocx'])
+    ->withoutMiddleware([\App\Http\Middleware\VerifyCsrfToken::class]); // 取消 CSRF
 
 // 传统 OCR / 打分：依然可用（不强制落库）
 Route::post('/ocr',   [EssayApiController::class, 'ocr'])->name('api.ocr');
