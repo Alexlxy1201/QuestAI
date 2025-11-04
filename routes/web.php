@@ -10,6 +10,14 @@ use App\Http\Controllers\EssayController;
 | Web Routes
 |--------------------------------------------------------------------------
 */
+use App\Http\Middleware\VerifyCsrfToken;
+
+// ...existing GET routes...
+
+// Mirror POST /solve (web) -> same controller, WITHOUT CSRF
+Route::post('/solve', [SolveController::class, 'solve'])
+    ->withoutMiddleware([VerifyCsrfToken::class])
+    ->name('solve.post');
 
 // 🏠 Home
 Route::get('/', fn() => view('home'))->name('home');
