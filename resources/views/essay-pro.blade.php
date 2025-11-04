@@ -18,7 +18,7 @@
       </div>
     </div>
 
-    <p class="text-gray-600 mb-4">Upload image/PDF → AI extracts & corrects → local-only history. <small>(No server storage)</small></p>
+    <p class="text-gray-600 mb-4">Upload image/PDF → <b>AI extracts & scores</b> → local-only history. <small>(No server storage)</small></p>
 
     <div class="grid md:grid-cols-2 gap-6">
       {{-- Left --}}
@@ -64,10 +64,10 @@
           </div>
 
           <div class="mt-4 flex items-center gap-3">
-            <button id="btnDirect" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">
-              🔎 Extract & Correct (AI)
+            <button id="btnGrade" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">
+              🧠 Extract + Score (AI)
             </button>
-            <span id="directStatus" class="text-sm text-gray-500"></span>
+            <span id="gradeStatus" class="text-sm text-gray-500"></span>
           </div>
         </div>
       </div>
@@ -75,15 +75,8 @@
       {{-- Right --}}
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Essay Text (editable)</label>
-        <textarea id="essayText" rows="14" placeholder="After AI extraction/correction, you can edit here…"
+        <textarea id="essayText" rows="14" placeholder="If you paste text here without a file, AI will score this content."
                   class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
-
-        <div class="mt-4 flex items-center gap-3">
-          <button id="btnScore" class="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700">
-            ⚡ Get AI score & suggestions
-          </button>
-          <span id="scoreStatus" class="text-sm text-gray-500"></span>
-        </div>
       </div>
     </div>
 
@@ -124,13 +117,19 @@
           <div class="text-xs text-gray-400">/20</div>
         </div>
       </div>
+
       <div class="mt-4">
         <h3 class="text-base font-semibold">Revision suggestions</h3>
         <ul id="suggestions" class="list-disc pl-6 mt-2 space-y-1 text-gray-700"></ul>
       </div>
+
+      <div class="mt-4">
+        <h3 class="text-base font-semibold">Rubric explanations</h3>
+        <ul id="rubricExplain" class="list-disc pl-6 mt-2 space-y-1 text-gray-700"></ul>
+      </div>
     </div>
 
-    {{-- ✅ Annotated Changes（新增：原文标注修改） --}}
+    {{-- ✅ Annotated Changes（原文标注修改） --}}
     <div class="bg-white rounded-2xl border mt-6 p-4 hidden" id="annotCard">
       <div class="flex items-center justify-between">
         <h2 class="text-xl font-bold">Annotated Changes</h2>
@@ -183,27 +182,30 @@
 
 {{-- ===== Script ===== --}}
 <script>
+  // ===== Config =====
+  const GRADE_API = '/api/essay/grade-direct';   // 一键“提取+评分”的后端路由
+  const EXPORT_API = '/api/essay/export-docx';
+
   // ===== Elements =====
   const $ = (id) => document.getElementById(id);
   const fileInput = $('fileInput'), cameraInput = $('cameraInput');
   const chooseButton = $('chooseButton'), cameraButton = $('cameraButton');
   const previewWrap = $('previewWrap'), previewImg = $('previewImg'), previewPdf = $('previewPdf'), previewMeta = $('previewMeta');
-  const btnDirect = $('btnDirect'), directStatus = $('directStatus');
+  const btnGrade = $('btnGrade'), gradeStatus = $('gradeStatus');
   const essayText = $('essayText'), titleEl = $('title'), rubricEl = $('rubric');
-  const btnScore = $('btnScore'), scoreStatus = $('scoreStatus');
   const resultCard = $('resultCard'), scContent = $('scContent'), scComm = $('scComm'), scOrg = $('scOrg'), scLang = $('scLang'), scTotal = $('scTotal');
-  const suggestions = $('suggestions'), btnExportDocx = $('btnExportDocx');
+  const suggestions = $('suggestions'), btnExportDocx = $('btnExportDocx'), rubricExplain = $('rubricExplain');
   const rubricRef = $('rubricRef');
   const btnSaveSnapshot = $('btnSaveSnapshot'), btnClearHistory = $('btnClearHistory'), historyList = $('historyList');
 
-  // ✅ 新增：标注 DOM
+  // 标注 DOM
   const annotCard = $('annotCard'), origTextEl = $('origText'), corrTextEl = $('corrText'), diffHtmlEl = $('diffHtml');
 
   // ===== State =====
   let selectedFile = null, isPdf = false, compressedDataURL = null;
   let history = [];
 
-  // ===== Init rubric reference（可编辑模板）=====
+  // ===== Init rubric reference =====
   rubricRef.value = `
 SPM Writing
 
@@ -232,9 +234,7 @@ Part 2：
 `.trim();
 
   // ===== History init =====
-  try {
-    history = JSON.parse(localStorage.getItem('essayProHistory') || '[]');
-  } catch (_) { history = []; }
+  try { history = JSON.parse(localStorage.getItem('essayProHistory') || '[]'); } catch (_) { history = []; }
   renderHistory();
 
   // ===== PDF -> Long Image =====
@@ -299,6 +299,7 @@ Part 2：
     $('previewMeta').textContent = `File: ${file.name} · Size: ${humanSize(file.size)}`;
 
     if(isPdf){
+      // 前端把 PDF 渲长图，后续按图片流程处理
       previewPdf.classList.add('hidden');
       previewImg.classList.remove('hidden');
 
@@ -307,7 +308,7 @@ Part 2：
         previewImg.src = longImageDataURL;
 
         compressedDataURL = longImageDataURL;
-        isPdf = false;
+        isPdf = false; // 转成图片后按图片分支上传
         selectedFile = new File(
           [dataURLtoBlob(longImageDataURL)],
           (file.name.replace(/\.pdf$/i, '') || 'document') + '.jpg',
@@ -325,6 +326,7 @@ Part 2：
       return;
     }
 
+    // 图片：压缩预览
     const reader = new FileReader();
     reader.onload = async (ev)=>{
       const dataURL = ev.target.result;
@@ -358,44 +360,62 @@ Part 2：
     return new Blob([u8],{type:mime});
   }
 
-  // ===== Direct Extract & Correct =====
-  btnDirect.addEventListener('click', async ()=>{
-    directStatus.textContent = '';
-    btnDirect.disabled = true; const old = btnDirect.textContent; btnDirect.textContent = 'Working…';
+  // ===== 一键提取+评分 =====
+  btnGrade.addEventListener('click', async ()=>{
+    gradeStatus.textContent = '';
+    btnGrade.disabled = true; const old = btnGrade.textContent; btnGrade.textContent = 'Working…';
 
     try{
-      const fd = new FormData();
-      fd.append('title', titleEl.value || '');
+      let payloadIsForm = false;
+      let body;
 
       if(selectedFile){
-        if(isPdf){
-          fd.append('file', selectedFile, selectedFile.name);
-        }else{
-          if(!compressedDataURL) throw new Error('Image not ready yet.');
-          const blob = dataURLtoBlob(compressedDataURL);
-          fd.append('file', blob, (selectedFile.name||'image')+'.jpg');
-        }
-      }else if(essayText.value.trim()){
-        fd.append('text', essayText.value.trim());
+        // 文件优先：图片 / （前端转图后的）PDF
+        const fd = new FormData();
+        fd.append('title', titleEl.value || '');
+        fd.append('rubric', rubricEl.value || 'SPM_P1');
+        // 若你想把 rubricRef 也传给后端作提示，可解开：
+        // fd.append('rubric_ref', rubricRef.value || '');
+        if(!compressedDataURL) throw new Error('Image not ready yet.');
+        const blob = dataURLtoBlob(compressedDataURL);
+        fd.append('file', blob, (selectedFile.name||'image')+'.jpg');
+        payloadIsForm = true;
+        body = fd;
       }else{
-        throw new Error('Provide a file or text.');
+        // 直接文本评分
+        const txt = (essayText.value || '').trim();
+        if(!txt) throw new Error('Provide a file or text.');
+        body = JSON.stringify({
+          title: titleEl.value || '',
+          rubric: rubricEl.value || 'SPM_P1',
+          text: txt,
+          // rubric_ref: rubricRef.value || ''   // 如需后端使用参考细则
+        });
       }
 
-      const res = await fetch('/api/essay/direct-correct', { method:'POST', body:fd });
+      const res = await fetch(GRADE_API, {
+        method: 'POST',
+        headers: payloadIsForm ? undefined : { 'Content-Type': 'application/json' },
+        body
+      });
       const json = await res.json();
-      if(!res.ok || !json.ok) throw new Error(json.error || 'Failed');
+      if(!res.ok || !json.ok) throw new Error(json.error || 'Grade failed');
 
-      const original = json.extracted || '';
-      const corrected = json.corrected || original;
+      const original   = json.extracted || json.original || '';
+      const corrected  = json.corrected || '';
+      const scores     = json.scores || {};
+      const suggs      = Array.isArray(json.suggestions) ? json.suggestions : [];
+      const explainObj = json.rubric_explanations || json.explanations || {};
+      const explainArr = Array.isArray(explainObj) ? explainObj : objToPairs(explainObj);
 
-      // 写入编辑器
-      essayText.value = corrected;
-
-      // 渲染评分卡
-      directStatus.textContent = '✅ Done.';
-
-      // ✅ 渲染“原文标注修改”
+      // 写入编辑器 & 标注
+      essayText.value = corrected || original;
       renderAnnotations(original, corrected);
+
+      // 分数卡
+      renderScore({scores, suggestions: suggs, explanations: explainArr});
+
+      gradeStatus.textContent = '✅ Done.';
 
       // 保存历史
       pushHistory({
@@ -404,58 +424,47 @@ Part 2：
         rubric: rubricEl.value || '',
         extracted: original,
         corrected: corrected,
-        explanations: Array.isArray(json.explanations) ? json.explanations : []
+        explanations: Array.isArray(explainObj) ? explainObj : explainArr,
+        scores
       });
 
     }catch(err){
       console.error(err);
-      directStatus.textContent = '❌ Failed. Please check /api/essay/direct-correct.';
+      gradeStatus.textContent = '❌ Failed. Please check API.';
     }finally{
-      btnDirect.disabled = false; btnDirect.textContent = old;
+      btnGrade.disabled = false; btnGrade.textContent = old;
     }
   });
 
-  // ===== Score =====
-  btnScore.addEventListener('click', async ()=>{
-    scoreStatus.textContent = '';
-    const text = (essayText.value || '').trim();
-    if(!text){ scoreStatus.textContent = 'Provide essay text first.'; return; }
-
-    btnScore.disabled = true; const old = btnScore.textContent; btnScore.textContent = 'Scoring…';
+  function objToPairs(o){
     try{
-      const res = await fetch('/api/grade', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ title: titleEl.value || '', rubric: rubricEl.value, text })
-      });
-      const json = await res.json();
-      if(!res.ok || !json.ok) throw new Error(json.error || 'Grade failed');
-      renderScore(json);
-      scoreStatus.textContent = '✅ Scored.';
-    }catch(err){
-      console.error(err);
-      scoreStatus.textContent = '❌ Score failed.';
-    }finally{
-      btnScore.disabled = false; btnScore.textContent = old;
-    }
-  });
+      return Object.entries(o).map(([k,v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+    }catch{ return []; }
+  }
 
+  // ===== 渲染评分卡 =====
   function renderScore(payload){
     resultCard.classList.remove('hidden');
     const s = payload.scores || {};
-    scContent.textContent = s.content ?? '-';
-    scComm.textContent   = s.communicative ?? s.communicative_achievement ?? '-';
-    scOrg.textContent    = s.organisation ?? '-';
-    scLang.textContent   = s.language ?? '-';
-    scTotal.textContent  = s.total ?? '-';
+    scContent.textContent = valOrDash(s.content);
+    scComm.textContent   = valOrDash(s.communicative ?? s.communicative_achievement);
+    scOrg.textContent    = valOrDash(s.organisation ?? s.organization);
+    scLang.textContent   = valOrDash(s.language);
+    scTotal.textContent  = valOrDash(s.total);
 
     suggestions.innerHTML = '';
     (payload.suggestions || []).forEach(x=>{
       const li = document.createElement('li'); li.textContent = x; suggestions.appendChild(li);
     });
-  }
 
-  // ===== ✅ 原文标注渲染 =====
+    rubricExplain.innerHTML = '';
+    (payload.explanations || []).forEach(x=>{
+      const li = document.createElement('li'); li.textContent = typeof x === 'string' ? x : JSON.stringify(x); rubricExplain.appendChild(li);
+    });
+  }
+  function valOrDash(v){ return (v === 0 || v) ? v : '-'; }
+
+  // ===== 原文标注渲染 =====
   function renderAnnotations(original, corrected){
     origTextEl.textContent = original || '-';
     corrTextEl.textContent = corrected || '-';
@@ -464,7 +473,7 @@ Part 2：
     annotCard.classList.remove('hidden');
   }
 
-  // 词级 LCS 比对：输出含 <ins>/<del> 的 HTML
+  // 词级 LCS Diff
   function makeAnnotatedDiff(a, b){
     const at = tokenize(a);
     const bt = tokenize(b);
@@ -472,40 +481,24 @@ Part 2：
 
     let i=0, j=0, html='';
     for (const [ti, tj] of lcs){
-      // 删除的段
-      while(i < ti){
-        html += `<del>${escapeHTML(at[i])}</del>`;
-        i++;
-      }
-      // 新增的段
-      while(j < tj){
-        html += `<ins>${escapeHTML(bt[j])}</ins>`;
-        j++;
-      }
-      // 公共 token
+      while(i < ti){ html += `<del>${escapeHTML(at[i])}</del>`; i++; }
+      while(j < tj){ html += `<ins>${escapeHTML(bt[j])}</ins>`; j++; }
       if (ti < at.length && tj < bt.length){
-        html += escapeHTML(at[ti]);
-        i = ti + 1;
-        j = tj + 1;
+        html += escapeHTML(at[ti]); i = ti + 1; j = tj + 1;
       }
     }
-    // 尾部残留
     while(i < at.length){ html += `<del>${escapeHTML(at[i++])}</del>`; }
     while(j < bt.length){ html += `<ins>${escapeHTML(bt[j++])}</ins>`; }
     return html;
   }
 
-  // 把文本拆成“词/空白/标点”token，保留空白用于原样重排
   function tokenize(s){
-    // 单词、数字、撇号词 + 多空白 + 单字符标点
     const re = /[A-Za-z0-9’'’-]+|\s+|[^\sA-Za-z0-9]/g;
-    const out = [];
-    let m;
+    const out = []; let m;
     while((m = re.exec(s))){ out.push(m[0]); }
     return out.length ? out : [s];
   }
 
-  // LCS 返回一列 [i,j] 对，表示公共 token 的匹配索引序列
   function buildLCS(a, b){
     const n=a.length, m=b.length;
     const dp = Array.from({length:n+1},()=>Array(m+1).fill(0));
@@ -514,29 +507,27 @@ Part 2：
         dp[i][j] = (a[i]===b[j]) ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
       }
     }
-    const path=[];
-    let i=0, j=0;
+    const path=[]; let i=0, j=0;
     while(i<n && j<m){
       if(a[i]===b[j]){ path.push([i,j]); i++; j++; }
-      else if(dp[i+1][j] >= dp[i][j+1]) i++;
-      else j++;
+      else if(dp[i+1][j] >= dp[i][j+1]) i++; else j++;
     }
     return path;
   }
 
-  // ===== Export DOCX =====
+  // ===== 导出 DOCX =====
   btnExportDocx.addEventListener('click', async ()=>{
     const corrected = (essayText.value || '').trim();
     if(!corrected){ alert('Nothing to export.'); return; }
     try{
-      const res = await fetch('/api/essay/export-docx', {
+      const res = await fetch(EXPORT_API, {
         method:'POST',
         headers:{ 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: $('title').value || 'Essay Report',
-          extracted: origTextEl?.textContent || '',   // 导出包含原文
+          extracted: origTextEl?.textContent || '',
           corrected: corrected,
-          explanations: []        
+          explanations: Array.from(rubricExplain.querySelectorAll('li')).map(li=>li.textContent)
         })
       });
       const json = await res.json();
@@ -551,7 +542,7 @@ Part 2：
     }
   });
 
-  // ===== Local history (domain + current browser only) =====
+  // ===== 历史记录 =====
   function pushHistory(item){
     history.unshift(item);
     history = history.slice(0, 50);
@@ -569,9 +560,17 @@ Part 2：
           <p><strong>Rubric:</strong> ${escapeHTML(h.rubric||'-')}</p>
           ${h.extracted ? `<div><strong>Extracted:</strong><br>${escapeHTML(h.extracted)}</div>`:''}
           ${h.corrected ? `<div><strong>Corrected:</strong><br>${escapeHTML(h.corrected)}</div>`:''}
+          ${h.scores ? `<div class="grid grid-cols-5 gap-2">
+              <div><b>C</b>: ${valOrDash(h.scores.content)}</div>
+              <div><b>Comm</b>: ${valOrDash(h.scores.communicative ?? h.scores.communicative_achievement)}</div>
+              <div><b>Org</b>: ${valOrDash(h.scores.organisation ?? h.scores.organization)}</div>
+              <div><b>Lang</b>: ${valOrDash(h.scores.language)}</div>
+              <div><b>Total</b>: ${valOrDash(h.scores.total)}</div>
+            </div>`: ''
+          }
           ${(h.explanations||[]).length ? `
-            <div><strong>Explanations:</strong>
-              <ul class="list-disc pl-5">${h.explanations.map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul>
+            <div><strong>Rubric explanations:</strong>
+              <ul class="list-disc pl-5">${h.explanations.map(x=>`<li>${escapeHTML(typeof x==='string'?x:JSON.stringify(x))}</li>`).join('')}</ul>
             </div>` : ''
           }
           <div class="pt-1">
@@ -590,7 +589,6 @@ Part 2：
         titleEl.value = h.title || '';
         rubricEl.value = h.rubric || 'SPM_P1';
         essayText.value = h.corrected || h.extracted || '';
-        // 载入历史时也即时生成标注视图
         renderAnnotations(h.extracted || '', h.corrected || '');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       };
@@ -605,18 +603,25 @@ Part 2：
     });
   }
 
-  $('btnSaveSnapshot').addEventListener('click', ()=>{
+  btnSaveSnapshot.addEventListener('click', ()=>{
     pushHistory({
       time: new Date().toLocaleString(),
       title: titleEl.value || '',
       rubric: rubricEl.value || '',
       extracted: origTextEl?.textContent || '',
       corrected: (essayText.value||'').trim(),
-      explanations: []
+      explanations: Array.from(rubricExplain.querySelectorAll('li')).map(li=>li.textContent),
+      scores: {
+        content: scContent.textContent,
+        communicative: scComm.textContent,
+        organisation: scOrg.textContent,
+        language: scLang.textContent,
+        total: scTotal.textContent
+      }
     });
   });
 
-  $('btnClearHistory').addEventListener('click', ()=>{
+  btnClearHistory.addEventListener('click', ()=>{
     if(confirm('Clear all local history?')){
       history = [];
       localStorage.removeItem('essayProHistory');
