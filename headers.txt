@@ -1,12 +1,15 @@
 HTTP/1.1 200 OK
-Host: 127.0.0.1:8000
-Connection: close
-X-Powered-By: PHP/8.2.12
-Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
-Content-Disposition: attachment; filename=smoke-test.docx
-Cache-Control: max-age=0, must-revalidate, no-cache, no-store, private
-Pragma: no-cache
-X-Accel-Buffering: no
-Date: Tue, 04 Nov 2025 18:32:15 GMT
 Access-Control-Allow-Origin: *
+Cache-Control: max-age=0, must-revalidate, no-cache, no-store, private
+Content-Disposition: attachment; filename=smoke-test.docx
+Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+Date: Tue, 04 Nov 2025 18:51:53 GMT
+Host: questai-production.up.railway.app
+Pragma: no-cache
+Server: railway-edge
+X-Accel-Buffering: no
+X-Powered-By: PHP/8.3.27
+X-Railway-Edge: railway/asia-southeast1-eqsg3a
+X-Railway-Request-Id: OKXjaVmgSk-CXZvYAQeqjw
+Transfer-Encoding: chunked
 
