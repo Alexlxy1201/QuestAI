@@ -145,6 +145,12 @@
   </div>
 </div>
 
+{{-- ===== pdf.js（必须在你的脚本前加载） ===== --}}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+</script>
+
 {{-- ===== Script ===== --}}
 <script>
   // ===== Elements =====
@@ -198,6 +204,42 @@ Part 2：
   } catch (_) { history = []; }
   renderHistory();
 
+  // ===== PDF -> Long Image =====
+  // 将 PDF 前 maxPages 页按 scale 渲成画布并纵向拼接，输出 dataURL（jpeg）
+  async function pdfToLongImage(file, { maxPages = 3, scale = 1.6, quality = 0.9 } = {}) {
+    const arrayBuf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+
+    const pageCanvases = [];
+    const count = Math.min(pdf.numPages, maxPages);
+
+    for (let i = 1; i <= count; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      const ctx = canvas.getContext("2d");
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      pageCanvases.push(canvas);
+    }
+
+    // 纵向拼接
+    const totalHeight = pageCanvases.reduce((sum, c) => sum + c.height, 0);
+    const maxWidth = Math.max(...pageCanvases.map(c => c.width));
+    const out = document.createElement("canvas");
+    out.width = maxWidth;
+    out.height = totalHeight;
+    const outCtx = out.getContext("2d");
+
+    let y = 0;
+    for (const c of pageCanvases) {
+      outCtx.drawImage(c, 0, y);
+      y += c.height;
+    }
+    return out.toDataURL("image/jpeg", quality);
+  }
+
   // ===== File handlers =====
   chooseButton.addEventListener('click', () => fileInput.click());
   cameraButton.addEventListener('click', () => cameraInput.click());
@@ -206,7 +248,8 @@ Part 2：
 
   function humanSize(bytes){
     const units=['B','KB','MB','GB']; let i=0, num=bytes||0;
-    while(num>=1024 && i<units.length-1){ num/=1024; i++; }
+    while(num>=1024 && i<units.length-1){ num/=1024; i++;
+    }
     return `${num.toFixed(1)} ${units[i]}`;
   }
 
@@ -226,13 +269,35 @@ Part 2：
     $('previewMeta').textContent = `File: ${file.name} · Size: ${humanSize(file.size)}`;
 
     if(isPdf){
-      previewImg.classList.add('hidden');
-      previewPdf.classList.remove('hidden');
-      previewPdf.textContent = 'PDF selected.';
-      compressedDataURL = null;
+      // —— 前端把 PDF 渲成一张长图，后续按图片提交流程走 ——
+      previewPdf.classList.add('hidden');
+      previewImg.classList.remove('hidden');
+
+      try {
+        const longImageDataURL = await pdfToLongImage(file, { maxPages: 3, scale: 1.6, quality: 0.9 });
+        previewImg.src = longImageDataURL;
+
+        // 让后续提交流程按“图片上传”处理
+        compressedDataURL = longImageDataURL;
+        isPdf = false; // 重要：标记成非 PDF，从而走图片分支
+        selectedFile = new File(
+          [dataURLtoBlob(longImageDataURL)],
+          (file.name.replace(/\.pdf$/i, '') || 'document') + '.jpg',
+          { type: 'image/jpeg' }
+        );
+
+        $('previewMeta').textContent += ` · Rendered as long image (~${Math.round((compressedDataURL.length * 3 / 4)/1024)} KB)`;
+      } catch (err) {
+        console.error(err);
+        previewImg.classList.add('hidden');
+        previewPdf.classList.remove('hidden');
+        previewPdf.textContent = 'Failed to render PDF in browser.';
+        compressedDataURL = null;
+      }
       return;
     }
 
+    // 图片：正常压缩预览
     const reader = new FileReader();
     reader.onload = async (ev)=>{
       const dataURL = ev.target.result;
@@ -277,8 +342,9 @@ Part 2：
 
       if(selectedFile){
         if(isPdf){
+          // 理论上不会走到这，因为 PDF 已经在前端转成了图片并把 isPdf=false
+          // 加个兜底：直接上传原 PDF，也能被后端处理（若服务器装了 Imagick/PdfParser）
           fd.append('file', selectedFile, selectedFile.name);
-          // 可选：限制页数
           // fd.append('max_pages', '3');
         }else{
           if(!compressedDataURL) throw new Error('Image not ready yet.');
@@ -299,7 +365,7 @@ Part 2：
       const corrected = json.corrected || json.extracted || '';
       essayText.value = corrected;
 
-      // 保存一条快照到 localStorage
+      // 保存到 localStorage
       pushHistory({
         time: new Date().toLocaleString(),
         title: titleEl.value || '',
@@ -368,9 +434,9 @@ Part 2：
         headers:{ 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: $('title').value || 'Essay Report',
-          extracted: '',          // 若需要可保存最近的 extracted 值
+          extracted: '',          // 如需可写入最近 extracted
           corrected: corrected,
-          explanations: []        // 若需要可保存最近 explanations
+          explanations: []        // 如需可写入最近 explanations
         })
       });
       const json = await res.json();
@@ -442,7 +508,7 @@ Part 2：
       time: new Date().toLocaleString(),
       title: titleEl.value || '',
       rubric: rubricEl.value || '',
-      extracted: '', // 若需要可另外维护最近 extracted
+      extracted: '',
       corrected: (essayText.value||'').trim(),
       explanations: []
     });

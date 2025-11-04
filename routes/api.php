@@ -83,6 +83,7 @@ PROMPT;
 
 // Health：有人误用 GET /api/solve 就给提示
 Route::get('/solve', fn () => response()->json(['ok' => true, 'hint' => 'Use POST /api/solve'], 200));
+
 // Quiz Solver
 Route::post('/solve', [SolveController::class, 'solve']);
 
