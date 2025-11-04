@@ -9,9 +9,9 @@
 
     {{-- Header --}}
     <div class="flex items-center justify-between gap-4 mb-4">
-      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
-        ✍️ Essay Pro — AI Grader
-      </h1>
+      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent"> 
+        ✍️ Essay Pro — AI Grader 
+      </h1> 
       <div class="flex items-center gap-2">
         <button id="btnExportDocx" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition">
           ⬇️ Export (.docx)
@@ -44,7 +44,7 @@
               <option value="UASA_P2">UASA — Part 2</option>
             </optgroup>
           </select>
-          <p class="text-xs text-gray-400 mt-1">评分维度：Content · Communicative Achievement · Organisation · Language（每项 0–5）。</p>
+          <p class="text-xs text-gray-400 mt-1">Scoring dimensions: Content · Communicative Achievement · Organisation · Language (0–5 each).</p>
         </div>
 
         <div class="mt-4">
@@ -67,10 +67,10 @@
             <div id="previewMeta" class="text-xs text-gray-500 mt-1"></div>
           </div>
 
-          {{-- ✅ Single-step: Extract + Score --}}
+          {{-- ✅ Single-step: Extract + Grade --}}
           <div class="mt-4 flex items-center gap-3">
             <button id="btnRun" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">
-              🧠 Extract + Score (AI)
+              🧠 Extract + Grade (AI)
             </button>
             <span id="runStatus" class="text-sm text-gray-500"></span>
           </div>
@@ -85,11 +85,11 @@
       </div>
     </div>
 
-    {{-- Rubric reference（可编辑，仅本地） --}}
+    {{-- Rubric reference (editable, local only) --}}
     <div class="mt-6">
       <label class="block text-sm font-medium text-gray-700 mb-1">Rubric Reference (editable)</label>
       <textarea id="rubricRef" rows="8" class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
-      <p class="text-xs text-gray-400 mt-1">你可修改此处文本；仅用于参考，不会发送给后台。</p>
+      <p class="text-xs text-gray-400 mt-1">You can modify this text; it’s for reference only and won’t be sent to the backend.</p>
     </div>
 
     {{-- Score Result --}}
@@ -127,7 +127,7 @@
         </div>
       </div>
 
-      {{-- 评分细则解释 --}}
+      {{-- Criterion explanations --}}
       <div class="mt-4 grid md:grid-cols-2 gap-4" id="rationaleWrap">
         <div class="p-3 rounded-xl bg-gray-50">
           <div class="text-xs uppercase text-gray-500 mb-1">Criterion Explanations</div>
@@ -165,7 +165,7 @@
     {{-- History (localStorage only) --}}
     <div class="mt-8">
       <div class="flex items-center justify-between mb-2">
-        <h2 class="text-xl font-bold text-indigo-700">📜 History (local only)</h2>
+        <h2 class="text-xl font-bold text-indigo-700">📜 History (Local Only)</h2>
         <div class="flex gap-3">
           <button id="btnSaveSnapshot" class="text-sm text-blue-600 underline">Save snapshot</button>
           <button id="btnClearHistory" class="text-sm text-red-600 underline">Clear</button>
@@ -177,7 +177,7 @@
   </div>
 </div>
 
-{{-- ===== 样式 ===== --}}
+{{-- ===== Styles ===== --}}
 <style>
   .annot-ins { background: #DCFCE7; border-radius: .25rem; text-decoration: none; }
   .annot-del { background: #FEE2E2; border-radius: .25rem; text-decoration: line-through; }
@@ -237,31 +237,31 @@
   let selectedFile = null, isPdf = false, compressedDataURL = null;
   let history = [];
 
-  // ===== Default rubric text =====
+  // ===== Default rubric text (EN) =====
   rubricRef.value = `SPM Writing
 
-Part 1 — Assessment scale（5/3/1/0）：
-5 分：内容完全相关、读者充分获知；能用任务体裁传达直白想法；有简单连接词/少量衔接手段；基础词汇与简单语法控制良好，虽有错但不影响理解。
-3 分：轻微跑题/遗漏；整体能被告知；用简单方式表达简单想法；主要靠高频连接词；基础词汇与简单语法有时出错并影响理解。
-1 分：可能误解任务；读者仅被最低限度告知；多为短小片段，衔接弱；词汇以孤立词/短语为主；少量简单语法且控制有限。0 分：内容完全不相关。
+Part 1 — Assessment scale (5/3/1/0):
+5: Content fully relevant; reader well informed; conveys straightforward ideas using an appropriate text type; uses simple linkers/few cohesive devices; basic vocabulary and simple grammar well controlled; errors do not impede understanding.
+3: Slight irrelevance/omission; reader generally informed; simple ideas expressed simply; relies on common linkers; basic vocabulary and simple grammar sometimes inaccurate and may affect understanding.
+1: Task may be misunderstood; reader minimally informed; mostly short, disconnected sentences; weak cohesion; vocabulary mainly isolated words/phrases; limited control of simple grammar. 0: Completely irrelevant.
 
-Part 2 — Assessment scale：
-5 分：内容完全相关、读者充分获知；体裁得当且能抓住读者；组织连贯、衔接多样；日常词汇较广（偶有少见词不当）；简单+部分复杂语法控制良好，错误不阻碍交流。
-3 分：轻微跑题/遗漏；总体被告知；体裁使用基本得当；简单连接词/有限衔接；基础词汇与简单语法控制较好，虽有错但可理解。0–1 分：同 Part 1。
+Part 2 — Assessment scale:
+5: Content fully relevant; reader well informed; appropriate text type and engaging; coherent organization with varied cohesion; fairly wide everyday vocabulary (occasional misuse of less common words); good control of simple and some complex grammar; errors do not hinder communication.
+3: Slight irrelevance/omission; reader generally informed; text type used adequately; mainly simple linkers with limited cohesion; fair control of vocabulary and grammar though errors occur. 0–1: Same as Part 1 low bands.
 
-Part 3 — Assessment scale：
-5 分：内容完全相关、目的达成；组织良好、衔接多样；词汇范围广含较少见词；简单与复杂语法兼具控制与灵活度，仅偶发疏漏。
-3 分：轻微跑题/遗漏；总体被告知；能保持读者注意；组织较好且衔接多样；词汇范围较广（偶有较少见词用不当）；简单与部分复杂语法控制良好。0–1 分：同 Part 1。
+Part 3 — Assessment scale:
+5: Content fully relevant; purpose achieved; well organized with varied cohesion; wide vocabulary including some less common items; flexible use of simple + complex grammar with good control; only occasional slips.
+3: Slight irrelevance/omission; reader generally informed and engaged; fairly well organized with some variety of linking; reasonably wide vocabulary (occasional misuse of less common words); good control of simple and some complex grammar. 0–1: Same as Part 1 low bands.
 
 UASA / Form 3 Writing
 
-Part 1：
-5 分：内容全相关、读者充分获知；能用体裁较好地传达直白想法；简单连接词/少量衔接手段；基础词汇与简单语法控制良好（可见但不致命的错误）。
-3 分：轻微跑题/遗漏；整体被告知；简单方式表达简单想法；以高频连接词为主；基础词汇/简单语法有时影响理解。1–0 分：同 SPM Part 1。
+Part 1:
+5: Fully relevant; reader well informed; conveys straightforward ideas with an appropriate text type; uses simple linkers/few cohesive devices; good control of basic vocabulary and simple grammar (errors noticeable but not serious).
+3: Slight irrelevance/omission; reader generally informed; simple ideas in simple forms; relies on common linkers; basic vocabulary/grammar sometimes affect understanding. 1–0: Same as SPM Part 1 low bands.
 
-Part 2：
-5 分：内容全相关、读者充分获知；体裁能抓住读者并传达直白想法；组织连贯、衔接多样；日常词汇较广；简单+部分复杂语法控制良好、错误不阻碍交流。
-3 分：轻微跑题/遗漏；总体被告知；体裁使用“尚可”；以简单连接词/有限衔接为主；基础词汇与简单语法控制较好（可理解）。1–0 分：同上。`;
+Part 2:
+5: Fully relevant; reader well informed; text type engages and informs; coherent and organized with some varied cohesion; fairly wide everyday vocabulary; good control of simple + some complex grammar; errors do not impede understanding.
+3: Slight irrelevance/omission; reader generally informed; text type adequate; mostly simple linkers/limited cohesion; basic vocabulary and simple grammar mostly accurate and understandable. 1–0: Same as above.`;
 
   try { history = JSON.parse(localStorage.getItem('essayProHistory') || '[]'); } catch (_) { history = []; }
   renderHistory();
