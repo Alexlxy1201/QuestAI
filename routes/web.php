@@ -49,3 +49,18 @@ Route::get('/envcheck', function () {
         'key_preview' => substr(env('OPENAI_API_KEY') ?? '', 0, 8),
     ]);
 });
+use App\Http\Controllers\EssayApiController;
+
+/*
+|----------------------------------------------------------------------
+| ⛳ Web fallback for Railway rewrite
+| - 同样指向 exportDocx()
+| - 取消 CSRF，允许前端直接 POST
+|----------------------------------------------------------------------
+*/
+Route::post('/essay/export-docx-direct', [EssayApiController::class, 'exportDocx'])
+    ->withoutMiddleware([VerifyCsrfToken::class])
+    ->name('web.essay.exportDocxDirect');
+
+/* 可选：探针路由，浏览器打开应显示 "pong" */
+Route::get('/essay/export-docx/ping', fn() => response('pong', 200));

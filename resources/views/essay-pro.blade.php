@@ -560,33 +560,40 @@ Part 2：
     }
     return path;
   }
-  btnExportDocx.addEventListener('click', async ()=>{
+
+  
+btnExportDocx.addEventListener('click', async ()=>{
   const corrected = (essayText.value || '').trim();
   if(!corrected){ alert('没有可导出的内容'); return; }
 
   const explanations = Array.from(document.querySelectorAll('#rationaleList li'))
                             .map(li => li.textContent).slice(0, 20);
 
-  // 1) 正常 API 路径（绝对 URL）
+  // 逐个尝试的候选 URL（绝对路径 + index.php + web 兜底）
   const tryUrls = [
     "{{ url('/api/essay/export-docx') }}",
-    "{{ url('/index.php/api/essay/export-docx') }}" // 2) 兜底：显式走 index.php，绕过重写
+    "{{ url('/index.php/api/essay/export-docx') }}",
+    "{{ url('/essay/export-docx-direct') }}",
+    "{{ url('/index.php/essay/export-docx-direct') }}",
   ];
+
+  const body = JSON.stringify({
+    title: document.getElementById('title').value || 'Essay Report',
+    extracted: document.getElementById('origText')?.textContent || '',
+    corrected: corrected,
+    explanations: explanations
+  });
 
   for (const u of tryUrls) {
     try {
       const res = await fetch(u, {
         method:'POST',
         headers:{ 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: document.getElementById('title').value || 'Essay Report',
-          extracted: document.getElementById('origText')?.textContent || '',
-          corrected: corrected,
-          explanations: explanations
-        })
+        body
       });
 
       const ct = (res.headers.get('content-type') || '').toLowerCase();
+      // 只有当返回是 docx 才认为成功
       if (res.ok && ct.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
@@ -594,11 +601,11 @@ Part 2：
         a.href = url; a.download = 'essay-report.docx';
         document.body.appendChild(a); a.click(); a.remove();
         URL.revokeObjectURL(url);
-        return; // ✅ 成功后直接返回
+        return; // ✅ 成功
       } else {
-        // 打印前 300 字便于排错
+        // 打印前 400 字排查（通常会是首页 HTML）
         const text = await res.text();
-        console.warn('Export fallback - not docx from', u, res.status, ct, text.slice(0,300));
+        console.warn('Not DOCX from', u, res.status, ct, text.slice(0, 400));
       }
     } catch (e) {
       console.warn('Export request failed for', u, e);
