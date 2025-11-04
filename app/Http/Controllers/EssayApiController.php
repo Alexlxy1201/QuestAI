@@ -27,7 +27,6 @@ class EssayApiController extends Controller
         $pages = 0;
 
         if ($mime === 'application/pdf') {
-            // 优先：pdfparser（文本层）
             if (class_exists(\Smalot\PdfParser\Parser::class)) {
                 try {
                     $parser = new \Smalot\PdfParser\Parser();
@@ -36,7 +35,6 @@ class EssayApiController extends Controller
                     $pages  = count($pdf->getPages());
                 } catch (\Throwable $e) { $text = ''; }
             }
-            // 若无文本层：需要 Imagick 分页截图 + Vision OCR
             if ($text === '') {
                 if (!class_exists(\Imagick::class)) {
                     return response()->json([
@@ -126,8 +124,7 @@ SYS;
     }
 
     /**
-     * 直接“提取 + 润色”：文件(图片/PDF)或纯文本 -> 提取文本/润色/解释
-     * 不落库
+     * 直接“提取 + 润色”：文件(图片/PDF)或纯文本 -> 提取文本/润色/解释（不落库）
      */
     public function directCorrect(Request $request)
     {
@@ -152,7 +149,7 @@ SYS;
         $corrected = null;
         $explainArr = [];
 
-        // A) 有文件：先处理文件
+        // A) 处理文件
         if ($request->hasFile('file')) {
             $file = $request->file('file');
             $mime = $file->getMimeType();
@@ -196,7 +193,6 @@ SYS;
                     ], 400);
                 }
             } else {
-                // 单张图片：一次性提取+润色
                 $blob = file_get_contents($abs);
                 $result = $this->imageExtractAndCorrect([$blob], $apiKey, $model, $base);
                 $extracted  = $result['extracted'] ?? '';
@@ -268,29 +264,32 @@ PROMPT;
     }
 
     /**
-     * 导出 Word（.docx）—— 改为“直接流式下载”，不落地、不依赖 URL
+     * 导出 Word（.docx）—— 直接流式下载（不落地）
      * 需要：composer require phpoffice/phpword 且启用 ext-zip
      */
     public function exportDocx(Request $request)
     {
         $payload = $request->validate([
             'title'        => ['nullable','string'],
+            'rubric'       => ['nullable','string'],
             'extracted'    => ['required','string'],
             'corrected'    => ['required','string'],
-            'explanations' => ['nullable','array'],
+            'scores'       => ['nullable','array'],    // {content,communicative,organisation,language,total}
+            'rationales'   => ['nullable','array'],    // 评分细则解释
+            'suggestions'  => ['nullable','array'],    // 修订建议
         ]);
 
-        $title        = trim($payload['title'] ?? 'Essay Report');
-        $extracted    = $payload['extracted'];
-        $corrected    = $payload['corrected'];
-        $explanations = $payload['explanations'] ?? [];
+        $title       = trim($payload['title'] ?? 'Essay Report');
+        $rubric      = $payload['rubric'] ?? '';
+        $extracted   = $payload['extracted'];
+        $corrected   = $payload['corrected'];
+        $scores      = $payload['scores'] ?? [];
+        $rationales  = $payload['rationales'] ?? [];
+        $suggestions = $payload['suggestions'] ?? [];
 
-        // 构建 PhpWord 文档对象（内存）
-        $phpWord = $this->buildDocxPhpWord($title, $extracted, $corrected, $explanations);
+        $phpWord = $this->buildDocxPhpWordFull($title, $rubric, $extracted, $corrected, $scores, $rationales, $suggestions);
 
-        // 安全文件名
         $filename = preg_replace('/[^\w\-]+/u', '_', $title) . '.docx';
-
         return response()->streamDownload(function () use ($phpWord) {
             $writer = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
             $writer->save('php://output');
@@ -302,17 +301,17 @@ PROMPT;
         ]);
     }
 
-    /* ===== 占位：由于“仅本地存储”，这两个接口不提供服务端历史 ===== */
     public function history(Request $request)
     {
         return response()->json(['ok'=>false,'error'=>'Server-side history is disabled. Use localStorage only.'], 501);
     }
+
     public function exportHistory(Request $request)
     {
         return response()->json(['ok'=>false,'error'=>'Server-side history export is disabled. Use localStorage only.'], 501);
     }
 
-    /* ====== 工具函数：OpenAI Vision OCR（单图 -> 文本） ====== */
+    /** ===== OpenAI Vision OCR（单图 -> 文本） ===== */
     private function visionOCR(string $blob, string $mime): string
     {
         $apiKey = env('OPENAI_API_KEY');
@@ -344,7 +343,7 @@ PROMPT;
         return trim($res->json('choices.0.message.content') ?? '');
     }
 
-    /* ====== 工具函数：多图像 -> 一次性提取+润色 ====== */
+    /** ===== 多图像 -> 一次性提取+润色 ===== */
     private function imageExtractAndCorrect(array $imageBlobs, string $apiKey, string $model, string $base): array
     {
         $makeContent = function(string $type) use ($imageBlobs) {
@@ -363,7 +362,7 @@ PROMPT;
             return $content;
         };
 
-        // 尝试 image_url
+        // 首选 image_url
         $res = Http::withHeaders([
             'Authorization' => "Bearer {$apiKey}",
             'Content-Type'  => 'application/json',
@@ -397,9 +396,9 @@ PROMPT;
     }
 
     /**
-     * 工具函数：构建 PhpWord 文档对象（不落地）
+     * 构建完整导出文档（含分数/解释/建议）
      */
-    private function buildDocxPhpWord(string $title, string $extracted, string $corrected, array $explanations)
+    private function buildDocxPhpWordFull(string $title, string $rubric, string $extracted, string $corrected, array $scores, array $rationales, array $suggestions)
     {
         if (!class_exists(\PhpOffice\PhpWord\PhpWord::class)) {
             throw new \RuntimeException('PhpOffice\\PhpWord not installed. Run: composer require phpoffice/phpword');
@@ -408,39 +407,65 @@ PROMPT;
         $phpWord = new \PhpOffice\PhpWord\PhpWord();
         $phpWord->setDefaultFontName('Calibri');
         $phpWord->setDefaultFontSize(11);
-
         $phpWord->addTitleStyle(1, ['size'=>18,'bold'=>true]);
         $phpWord->addTitleStyle(2, ['size'=>14,'bold'=>true]);
 
-        $section = $phpWord->addSection();
-        $section->addTitle('Essay Report', 1);
-        if ($title) { $section->addText("Title: {$title}", ['bold'=>true]); }
-        $section->addText(date('Y-m-d H:i:s'), ['color'=>'777777','size'=>10]);
-        $section->addTextBreak(1);
+        $sec = $phpWord->addSection();
+        $sec->addTitle('Essay Report', 1);
+        if ($title) $sec->addText("Title: {$title}", ['bold'=>true]);
+        if ($rubric) $sec->addText("Rubric: {$rubric}", ['color'=>'555555']);
+        $sec->addText(date('Y-m-d H:i:s'), ['color'=>'777777','size'=>10]);
+        $sec->addTextBreak(1);
 
-        $section->addTitle('Original (Extracted)', 2);
-        foreach (preg_split("/\r\n|\n|\r/", $extracted !== '' ? $extracted : '-') as $line) {
-            $section->addText($line ?: ' ');
-        }
-        $section->addTextBreak(1);
-
-        $section->addTitle('Corrected / Improved', 2);
-        foreach (preg_split("/\r\n|\n|\r/", $corrected !== '' ? $corrected : '-') as $line) {
-            $section->addText($line ?: ' ');
-        }
-        $section->addTextBreak(1);
-
-        if (!empty($explanations)) {
-            $section->addTitle('Rationales / Explanations', 2);
-            foreach ($explanations as $ex) {
-                $section->addListItem(is_string($ex) ? $ex : json_encode($ex, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+        if (!empty($scores)) {
+            $sec->addTitle('Scores (0–5 each, total /20)', 2);
+            $table = $sec->addTable(['borderSize'=>6,'borderColor'=>'cccccc','cellMargin'=>80]);
+            $table->addRow();
+            foreach (['Content','Communicative','Organisation','Language','Total'] as $th) {
+                $table->addCell(1800)->addText($th, ['bold'=>true]);
             }
+            $table->addRow();
+            $table->addCell(1800)->addText((string)($scores['content'] ?? '-'));
+            $table->addCell(1800)->addText((string)($scores['communicative'] ?? $scores['communicative_achievement'] ?? '-'));
+            $table->addCell(1800)->addText((string)($scores['organisation'] ?? '-'));
+            $table->addCell(1800)->addText((string)($scores['language'] ?? '-'));
+            $table->addCell(1800)->addText((string)($scores['total'] ?? '-'));
+            $sec->addTextBreak(1);
+        }
+
+        if (!empty($rationales)) {
+            $sec->addTitle('Criterion Explanations', 2);
+            foreach ($rationales as $r) {
+                $sec->addListItem(is_string($r) ? $r : json_encode($r, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+            }
+            $sec->addTextBreak(1);
+        }
+
+        if (!empty($suggestions)) {
+            $sec->addTitle('Revision Suggestions', 2);
+            foreach ($suggestions as $s) {
+                $sec->addListItem(is_string($s) ? $s : json_encode($s, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+            }
+            $sec->addTextBreak(1);
+        }
+
+        $sec->addTitle('Original (Extracted)', 2);
+        foreach (preg_split("/\r\n|\n|\r/", $extracted === '' ? '-' : $extracted) as $line) {
+            $sec->addText($line ?: ' ');
+        }
+        $sec->addTextBreak(1);
+
+        $sec->addTitle('Corrected / Improved', 2);
+        foreach (preg_split("/\r\n|\n|\r/", $corrected === '' ? '-' : $corrected) as $line) {
+            $sec->addText($line ?: ' ');
         }
 
         return $phpWord;
     }
 
-    /* ====== （保留）生成 DOCX 文件到存储并返回 URL —— 兼容其它旧逻辑 ====== */
+    /**
+     * 旧：生成 DOCX 到存储并返回 URL（保留兼容）
+     */
     private function buildDocxAndGetUrl(string $title, string $extracted, string $corrected, array $explanations): string
     {
         if (!class_exists(\PhpOffice\PhpWord\PhpWord::class)) {
@@ -471,7 +496,6 @@ PROMPT;
             }
         }
 
-        // 保存到 public 磁盘（旧方式）
         if (!Storage::disk('public')->exists('essay_reports')) {
             Storage::disk('public')->makeDirectory('essay_reports');
         }

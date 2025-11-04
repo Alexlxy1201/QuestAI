@@ -7,9 +7,9 @@
   <div class="bg-white shadow-2xl rounded-2xl p-6 w-full max-w-5xl text-left transition-all duration-300">
 
     {{-- Header --}}
-    <div class="flex items-center justify-between gap-4 mb-4"> 
-      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent"> 
-        ✍️ Essay Pro — AI Grader 
+    <div class="flex items-center justify-between gap-4 mb-4">
+      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
+        ✍️ Essay Pro — AI Grader
       </h1>
       <div class="flex items-center gap-2">
         <button id="btnExportDocx" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition">
@@ -183,12 +183,7 @@
   #diffHtml ins { background: #DCFCE7; text-decoration: none; padding: 0 .15rem; border-radius: .2rem; }
   #diffHtml del { background: #FEE2E2; padding: 0 .15rem; border-radius: .2rem; }
 
-  /* Loading overlay */
-  #overlay {
-    position: fixed; inset: 0; background: rgba(255,255,255,.6);
-    display: none; align-items: center; justify-content: center; z-index: 60;
-    backdrop-filter: blur(2px);
-  }
+  #overlay { position: fixed; inset: 0; background: rgba(255,255,255,.6); display: none; align-items: center; justify-content: center; z-index: 60; backdrop-filter: blur(2px); }
   #overlay.show { display: flex; }
 </style>
 
@@ -202,15 +197,10 @@
   </div>
 </div>
 
-{{-- ===== pdf.js（必须在你的脚本前加载） ===== --}}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script>
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-</script>
+<script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
 
-{{-- ===== Script ===== --}}
 <script>
-  // ===== Elements =====
   const $ = (id) => document.getElementById(id);
   const fileInput = $('fileInput'), cameraInput = $('cameraInput');
   const chooseButton = $('chooseButton'), cameraButton = $('cameraButton');
@@ -224,13 +214,10 @@
   const annotCard = $('annotCard'), origTextEl = $('origText'), corrTextEl = $('corrText'), diffHtmlEl = $('diffHtml');
   const overlay = $('overlay');
 
-  // ===== State =====
   let selectedFile = null, isPdf = false, compressedDataURL = null;
   let history = [];
 
-  // ===== Init rubric reference（可编辑模板）=====
-  rubricRef.value = `
-SPM Writing
+  rubricRef.value = `SPM Writing
 
 Part 1 — Assessment scale（5/3/1/0）：
 5 分：内容完全相关、读者充分获知；能用任务体裁传达直白想法；有简单连接词/少量衔接手段；基础词汇与简单语法控制良好，虽有错但不影响理解。
@@ -253,14 +240,16 @@ Part 1：
 
 Part 2：
 5 分：内容全相关、读者充分获知；体裁能抓住读者并传达直白想法；组织连贯、衔接多样；日常词汇较广；简单+部分复杂语法控制良好、错误不阻碍交流。
-3 分：轻微跑题/遗漏；总体被告知；体裁使用“尚可”；以简单连接词/有限衔接为主；基础词汇与简单语法控制较好（可理解）。1–0 分：同上。
-`.trim();
+3 分：轻微跑题/遗漏；总体被告知；体裁使用“尚可”；以简单连接词/有限衔接为主；基础词汇与简单语法控制较好（可理解）。1–0 分：同上。`;
 
-  // ===== History init =====
   try { history = JSON.parse(localStorage.getItem('essayProHistory') || '[]'); } catch (_) { history = []; }
   renderHistory();
 
-  // ===== PDF -> Long Image =====
+  chooseButton.addEventListener('click', () => fileInput.click());
+  cameraButton.addEventListener('click', () => cameraInput.click());
+  fileInput.addEventListener('change', handleFile);
+  cameraInput.addEventListener('change', handleFile);
+
   async function pdfToLongImage(file, { maxPages = 3, scale = 1.6, quality = 0.9 } = {}) {
     const arrayBuf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
@@ -294,17 +283,7 @@ Part 2：
     return out.toDataURL("image/jpeg", quality);
   }
 
-  // ===== File handlers =====
-  chooseButton.addEventListener('click', () => fileInput.click());
-  cameraButton.addEventListener('click', () => cameraInput.click());
-  fileInput.addEventListener('change', handleFile);
-  cameraInput.addEventListener('change', handleFile);
-
-  function humanSize(bytes){
-    const units=['B','KB','MB','GB']; let i=0, num=bytes||0;
-    while(num>=1024 && i<units.length-1){ num/=1024; i++; }
-    return `${num.toFixed(1)} ${units[i]}`;
-  }
+  function humanSize(bytes){ const u=['B','KB','MB','GB']; let i=0,n=bytes||0; while(n>=1024&&i<u.length-1){n/=1024;i++;} return `${n.toFixed(1)} ${u[i]}`; }
 
   async function handleFile(e){
     const file = e.target.files?.[0];
@@ -313,10 +292,7 @@ Part 2：
     isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
 
     const limit = isPdf ? 20*1024*1024 : 10*1024*1024;
-    if(file.size > limit){
-      alert(`File exceeds ${limit/1024/1024} MB`);
-      selectedFile = null; return;
-    }
+    if(file.size > limit){ alert(`File exceeds ${limit/1024/1024} MB`); selectedFile = null; return; }
 
     $('previewWrap').classList.remove('hidden');
     $('previewMeta').textContent = `File: ${file.name} · Size: ${humanSize(file.size)}`;
@@ -324,19 +300,12 @@ Part 2：
     if(isPdf){
       previewPdf.classList.add('hidden');
       previewImg.classList.remove('hidden');
-
       try {
         const longImageDataURL = await pdfToLongImage(file, { maxPages: 3, scale: 1.6, quality: 0.9 });
         previewImg.src = longImageDataURL;
-
         compressedDataURL = longImageDataURL;
         isPdf = false;
-        selectedFile = new File(
-          [dataURLtoBlob(longImageDataURL)],
-          (file.name.replace(/\.pdf$/i, '') || 'document') + '.jpg',
-          { type: 'image/jpeg' }
-        );
-
+        selectedFile = new File([dataURLtoBlob(longImageDataURL)], (file.name.replace(/\.pdf$/i, '') || 'document') + '.jpg', { type: 'image/jpeg' });
         $('previewMeta').textContent += ` · Rendered as long image (~${Math.round((compressedDataURL.length * 3 / 4)/1024)} KB)`;
       } catch (err) {
         console.error(err);
@@ -366,7 +335,7 @@ Part 2：
         const scale = Math.min(maxEdge/img.width, maxEdge/img.height, 1);
         const w = Math.round(img.width*scale), h = Math.round(img.height*scale);
         const c = document.createElement('canvas'); c.width=w; c.height=h;
-        const ctx = c.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+        c.getContext('2d').drawImage(img,0,0,w,h);
         resolve(c.toDataURL('image/jpeg', quality));
       };
       img.src = dataURL;
@@ -381,7 +350,6 @@ Part 2：
     return new Blob([u8],{type:mime});
   }
 
-  // ===== Single-step: Extract + Score =====
   btnRun.addEventListener('click', runExtractAndScore);
 
   async function runExtractAndScore(){
@@ -391,18 +359,11 @@ Part 2：
     overlay.classList.add('show');
 
     try{
-      // 1) Extract & Correct
       const { original, corrected, dc_explanations } = await doDirectCorrect();
-
-      // 更新编辑器、标注
       essayText.value = corrected || original || '';
       renderAnnotations(original || '', corrected || original || '');
-
-      // 2) Grade
       const gradePayload = await doGrade(essayText.value.trim(), rubricEl.value, titleEl.value || '');
       renderScore(gradePayload, rubricEl.value);
-
-      // 3) Save history
       pushHistory({
         time: new Date().toLocaleString(),
         title: titleEl.value || '',
@@ -411,7 +372,6 @@ Part 2：
         corrected: corrected || original || '',
         explanations: Array.isArray(dc_explanations) ? dc_explanations : []
       });
-
       runStatus.textContent = '✅ Done.';
     }catch(err){
       console.error(err);
@@ -426,53 +386,37 @@ Part 2：
   async function doDirectCorrect(){
     const fd = new FormData();
     fd.append('title', titleEl.value || '');
-
-    // 优先文件；否则用文本
     const rawText = (essayText.value || '').trim();
     if(selectedFile){
-      if(isPdf){
-        // 保险分支：正常不会走到这，PDF 已转 JPG
-        fd.append('file', selectedFile, selectedFile.name);
-      }else{
+      if(isPdf){ fd.append('file', selectedFile, selectedFile.name); }
+      else{
         if(!compressedDataURL) throw new Error('Image not ready yet.');
         const blob = dataURLtoBlob(compressedDataURL);
         fd.append('file', blob, (selectedFile.name||'image')+'.jpg');
       }
-    }else if(rawText){
-      fd.append('text', rawText);
-    }else{
-      throw new Error('Provide a file or text.');
-    }
+    }else if(rawText){ fd.append('text', rawText); }
+    else{ throw new Error('Provide a file or text.'); }
 
     const res = await fetch('/api/essay/direct-correct', { method:'POST', body:fd });
     const json = await res.json().catch(()=>({}));
-    if(!res.ok || !json.ok){
-      throw new Error(json.error || 'Extract/Correct failed.');
-    }
-    return {
-      original: json.extracted || '',
-      corrected: json.corrected || json.extracted || '',
-      dc_explanations: json.explanations || []
-    };
+    if(!res.ok || !json.ok){ throw new Error(json.error || 'Extract/Correct failed.'); }
+    return { original: json.extracted || '', corrected: json.corrected || json.extracted || '', dc_explanations: json.explanations || [] };
   }
 
   async function doGrade(text, rubric, title){
     if(!text) throw new Error('Empty text to grade.');
-    const res = await fetch('/api/grade', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ title: title || '', rubric, text })
-    });
+    const res = await fetch('/api/grade', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ title: title || '', rubric, text }) });
     const json = await res.json().catch(()=>({}));
-    if(!res.ok || !json.ok){
-      throw new Error(json.error || 'Grade failed.');
-    }
+    if(!res.ok || !json.ok){ throw new Error(json.error || 'Grade failed.'); }
     return json;
   }
 
   function renderScore(payload, rubricCode){
     resultCard.classList.remove('hidden');
     badgeRubric.textContent = rubricCode || '-';
+
+    // ✅ 缓存最近一次评分（供导出）
+    window.__lastGrade = payload;
 
     const s = payload.scores || {};
     scContent.textContent = valNum(s.content);
@@ -481,7 +425,6 @@ Part 2：
     scLang.textContent   = valNum(s.language);
     scTotal.textContent  = valNum(s.total);
 
-    // 评分细则解释（兼容多字段命名）
     const rationales = []
       .concat(payload.rationales || [])
       .concat(payload.explanations || [])
@@ -507,7 +450,6 @@ Part 2：
 
   function valNum(x){ return (x ?? '-') }
 
-  // ===== 原文标注渲染 =====
   function renderAnnotations(original, corrected){
     origTextEl.textContent = original || '-';
     corrTextEl.textContent = corrected || '-';
@@ -516,114 +458,79 @@ Part 2：
     annotCard.classList.remove('hidden');
   }
 
-  // 词级 LCS 比对：输出含 <ins>/<del> 的 HTML
   function makeAnnotatedDiff(a, b){
-    const at = tokenize(a);
-    const bt = tokenize(b);
-    const lcs = buildLCS(at, bt);
-
+    const at = tokenize(a); const bt = tokenize(b); const lcs = buildLCS(at, bt);
     let i=0, j=0, html='';
     for (const [ti, tj] of lcs){
       while(i < ti){ html += `<del>${escapeHTML(at[i])}</del>`; i++; }
       while(j < tj){ html += `<ins>${escapeHTML(bt[j])}</ins>`; j++; }
-      if (ti < at.length && tj < bt.length){
-        html += escapeHTML(at[ti]);
-        i = ti + 1; j = tj + 1;
-      }
+      if (ti < at.length && tj < bt.length){ html += escapeHTML(at[ti]); i = ti + 1; j = tj + 1; }
     }
     while(i < at.length){ html += `<del>${escapeHTML(at[i++])}</del>`; }
     while(j < bt.length){ html += `<ins>${escapeHTML(bt[j++])}</ins>`; }
     return html;
   }
 
-  function tokenize(s){
-    const re = /[A-Za-z0-9’'’-]+|\s+|[^\sA-Za-z0-9]/g;
-    const out = []; let m;
-    while((m = re.exec(s))){ out.push(m[0]); }
-    return out.length ? out : [s];
-  }
+  function tokenize(s){ const re=/[A-Za-z0-9’'’-]+|\s+|[^\sA-Za-z0-9]/g; const out=[]; let m; while((m=re.exec(s))){ out.push(m[0]); } return out.length?out:[s]; }
+  function buildLCS(a,b){ const n=a.length,m=b.length,dp=Array.from({length:n+1},()=>Array(m+1).fill(0)); for(let i=n-1;i>=0;i--){ for(let j=m-1;j>=0;j--){ dp[i][j]=(a[i]===b[j])?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]); } } const path=[]; let i=0,j=0; while(i<n&&j<m){ if(a[i]===b[j]){ path.push([i,j]); i++; j++; } else if(dp[i+1][j]>=dp[i][j+1]) i++; else j++; } return path; }
+  function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
-  function buildLCS(a, b){
-    const n=a.length, m=b.length;
-    const dp = Array.from({length:n+1},()=>Array(m+1).fill(0));
-    for(let i=n-1;i>=0;i--){
-      for(let j=m-1;j>=0;j--){
-        dp[i][j] = (a[i]===b[j]) ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
+  // ===== 导出 DOCX ：把评分等字段一并发送 =====
+  btnExportDocx.addEventListener('click', async ()=>{
+    const corrected = (essayText.value || '').trim();
+    if(!corrected){ alert('没有可导出的内容'); return; }
+
+    const last = window.__lastGrade || {};
+    const rationalesFromDom = Array.from(document.querySelectorAll('#rationaleList li')).map(li => li.textContent);
+
+    const body = JSON.stringify({
+      title: document.getElementById('title').value || 'Essay Report',
+      rubric: document.getElementById('rubric').value || '',
+      extracted: document.getElementById('origText')?.textContent || '',
+      corrected: corrected,
+      scores: last.scores || {},
+      suggestions: last.suggestions || [],
+      rationales: [
+        ...(last.rationales || []),
+        ...(last.explanations || []),
+        ...(last.criteria_explanations || []),
+        ...(last.rubric_breakdown || []),
+        ...rationalesFromDom
+      ].slice(0, 50)
+    });
+
+    const tryUrls = [
+      "{{ url('/api/essay/export-docx') }}",
+      "{{ url('/index.php/api/essay/export-docx') }}",
+      "{{ url('/essay/export-docx-direct') }}",
+      "{{ url('/index.php/essay/export-docx-direct') }}",
+    ];
+
+    for (const u of tryUrls) {
+      try {
+        const res = await fetch(u, { method:'POST', headers:{ 'Content-Type': 'application/json' }, body });
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        if (res.ok && ct.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = 'essay-report.docx';
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+          return;
+        } else {
+          const text = await res.text();
+          console.warn('Not DOCX from', u, res.status, ct, text.slice(0, 400));
+        }
+      } catch (e) {
+        console.warn('Export request failed for', u, e);
       }
     }
-    const path=[];
-    let i=0, j=0;
-    while(i<n && j<m){
-      if(a[i]===b[j]){ path.push([i,j]); i++; j++; }
-      else if(dp[i+1][j] >= dp[i][j+1]) i++;
-      else j++;
-    }
-    return path;
-  }
 
-  
-btnExportDocx.addEventListener('click', async ()=>{
-  const corrected = (essayText.value || '').trim();
-  if(!corrected){ alert('没有可导出的内容'); return; }
-
-  const explanations = Array.from(document.querySelectorAll('#rationaleList li'))
-                            .map(li => li.textContent).slice(0, 20);
-
-  // 逐个尝试的候选 URL（绝对路径 + index.php + web 兜底）
-  const tryUrls = [
-    "{{ url('/api/essay/export-docx') }}",
-    "{{ url('/index.php/api/essay/export-docx') }}",
-    "{{ url('/essay/export-docx-direct') }}",
-    "{{ url('/index.php/essay/export-docx-direct') }}",
-  ];
-
-  const body = JSON.stringify({
-    title: document.getElementById('title').value || 'Essay Report',
-    extracted: document.getElementById('origText')?.textContent || '',
-    corrected: corrected,
-    explanations: explanations
+    alert('❌ 导出失败：后端未返回 DOCX（路由未命中或被重定向到页面）。');
   });
 
-  for (const u of tryUrls) {
-    try {
-      const res = await fetch(u, {
-        method:'POST',
-        headers:{ 'Content-Type': 'application/json' },
-        body
-      });
-
-      const ct = (res.headers.get('content-type') || '').toLowerCase();
-      // 只有当返回是 docx 才认为成功
-      if (res.ok && ct.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = 'essay-report.docx';
-        document.body.appendChild(a); a.click(); a.remove();
-        URL.revokeObjectURL(url);
-        return; // ✅ 成功
-      } else {
-        // 打印前 400 字排查（通常会是首页 HTML）
-        const text = await res.text();
-        console.warn('Not DOCX from', u, res.status, ct, text.slice(0, 400));
-      }
-    } catch (e) {
-      console.warn('Export request failed for', u, e);
-    }
-  }
-
-  alert('❌ 导出失败：后端未返回 DOCX（路由未命中或被重定向到页面）。');
-});
-
-
-  // ===== Local history (domain + current browser only) =====
-  function pushHistory(item){
-    history.unshift(item);
-    history = history.slice(0, 50);
-    localStorage.setItem('essayProHistory', JSON.stringify(history));
-    renderHistory();
-  }
-
+  function pushHistory(item){ history.unshift(item); history = history.slice(0, 50); localStorage.setItem('essayProHistory', JSON.stringify(history)); renderHistory(); }
   function renderHistory(){
     historyList.innerHTML = history.map((h,idx)=>`
       <details class="bg-gray-50 rounded-lg p-3 border">
@@ -650,8 +557,7 @@ btnExportDocx.addEventListener('click', async ()=>{
     historyList.querySelectorAll('.btnLoad').forEach(btn=>{
       btn.onclick = ()=>{
         const i = +btn.getAttribute('data-idx');
-        const h = history[i];
-        if(!h) return;
+        const h = history[i]; if(!h) return;
         titleEl.value = h.title || '';
         rubricEl.value = h.rubric || 'SPM_P1';
         essayText.value = h.corrected || h.extracted || '';
@@ -676,7 +582,7 @@ btnExportDocx.addEventListener('click', async ()=>{
       rubric: rubricEl.value || '',
       extracted: origTextEl?.textContent || '',
       corrected: (essayText.value||'').trim(),
-      explanations: Array.from(rationaleList.querySelectorAll('li')).map(li=>li.textContent).slice(0,10)
+      explanations: Array.from(document.querySelectorAll('#rationaleList li')).map(li=>li.textContent).slice(0,10)
     });
   });
 
@@ -687,11 +593,5 @@ btnExportDocx.addEventListener('click', async ()=>{
       renderHistory();
     }
   });
-
-  function escapeHTML(s){
-    return String(s||'')
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-  }
-</script> 
+</script>
 @endsection
