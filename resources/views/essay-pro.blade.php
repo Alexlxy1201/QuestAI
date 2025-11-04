@@ -6,6 +6,7 @@
 <div class="min-h-[70vh] flex flex-col items-center justify-center p-4">
   <div class="bg-white shadow-2xl rounded-2xl p-6 w-full max-w-5xl text-left transition-all duration-300">
 
+    {{-- Header --}}
     <div class="flex items-center justify-between gap-4 mb-4"> 
       <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent"> 
         ✍️ Essay Pro — AI Grader 
@@ -18,7 +19,9 @@
       </div>
     </div>
 
-    <p class="text-gray-600 mb-4">Upload image/PDF → <b>AI extracts & scores</b> → local-only history. <small>(No server storage)</small></p>
+    <p class="text-gray-600 mb-4">
+      Upload image/PDF → AI extracts & grades in one go. <small>(No server storage)</small>
+    </p>
 
     <div class="grid md:grid-cols-2 gap-6">
       {{-- Left --}}
@@ -63,11 +66,12 @@
             <div id="previewMeta" class="text-xs text-gray-500 mt-1"></div>
           </div>
 
+          {{-- ✅ Single-step: Extract + Score --}}
           <div class="mt-4 flex items-center gap-3">
-            <button id="btnGrade" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">
+            <button id="btnRun" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">
               🧠 Extract + Score (AI)
             </button>
-            <span id="gradeStatus" class="text-sm text-gray-500"></span>
+            <span id="runStatus" class="text-sm text-gray-500"></span>
           </div>
         </div>
       </div>
@@ -75,7 +79,7 @@
       {{-- Right --}}
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Essay Text (editable)</label>
-        <textarea id="essayText" rows="14" placeholder="If you paste text here without a file, AI will score this content."
+        <textarea id="essayText" rows="14" placeholder="You may also paste/edit text here…"
                   class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
       </div>
     </div>
@@ -89,7 +93,11 @@
 
     {{-- Score Result --}}
     <div class="bg-white rounded-2xl border mt-6 p-4 hidden" id="resultCard">
-      <h2 class="text-xl font-bold">Result</h2>
+      <div class="flex items-center justify-between gap-4">
+        <h2 class="text-xl font-bold">AI Score</h2>
+        <span id="badgeRubric" class="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">-</span>
+      </div>
+
       <div class="grid md:grid-cols-5 gap-4 mt-3">
         <div class="p-3 rounded-xl bg-indigo-50">
           <div class="text-xs uppercase text-gray-500">Content</div>
@@ -118,18 +126,20 @@
         </div>
       </div>
 
-      <div class="mt-4">
-        <h3 class="text-base font-semibold">Revision suggestions</h3>
-        <ul id="suggestions" class="list-disc pl-6 mt-2 space-y-1 text-gray-700"></ul>
-      </div>
-
-      <div class="mt-4">
-        <h3 class="text-base font-semibold">Rubric explanations</h3>
-        <ul id="rubricExplain" class="list-disc pl-6 mt-2 space-y-1 text-gray-700"></ul>
+      {{-- 评分细则解释 --}}
+      <div class="mt-4 grid md:grid-cols-2 gap-4" id="rationaleWrap">
+        <div class="p-3 rounded-xl bg-gray-50">
+          <div class="text-xs uppercase text-gray-500 mb-1">Criterion Explanations</div>
+          <ul id="rationaleList" class="list-disc pl-6 space-y-1 text-gray-700"></ul>
+        </div>
+        <div class="p-3 rounded-xl bg-gray-50">
+          <div class="text-xs uppercase text-gray-500 mb-1">Revision Suggestions</div>
+          <ul id="suggestions" class="list-disc pl-6 space-y-1 text-gray-700"></ul>
+        </div>
       </div>
     </div>
 
-    {{-- ✅ Annotated Changes（原文标注修改） --}}
+    {{-- ✅ Annotated Changes --}}
     <div class="bg-white rounded-2xl border mt-6 p-4 hidden" id="annotCard">
       <div class="flex items-center justify-between">
         <h2 class="text-xl font-bold">Annotated Changes</h2>
@@ -172,7 +182,25 @@
   .annot-del { background: #FEE2E2; border-radius: .25rem; text-decoration: line-through; }
   #diffHtml ins { background: #DCFCE7; text-decoration: none; padding: 0 .15rem; border-radius: .2rem; }
   #diffHtml del { background: #FEE2E2; padding: 0 .15rem; border-radius: .2rem; }
+
+  /* Loading overlay */
+  #overlay {
+    position: fixed; inset: 0; background: rgba(255,255,255,.6);
+    display: none; align-items: center; justify-content: center; z-index: 60;
+    backdrop-filter: blur(2px);
+  }
+  #overlay.show { display: flex; }
 </style>
+
+<div id="overlay">
+  <div class="flex items-center gap-3 px-4 py-2 rounded-xl bg-white shadow">
+    <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" opacity=".2"/>
+      <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" stroke-width="4"/>
+    </svg>
+    <span class="text-sm text-gray-700">Processing with AI…</span>
+  </div>
+</div>
 
 {{-- ===== pdf.js（必须在你的脚本前加载） ===== --}}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -182,30 +210,25 @@
 
 {{-- ===== Script ===== --}}
 <script>
-  // ===== Config =====
-  const GRADE_API = '/api/essay/grade-direct';   // 一键“提取+评分”的后端路由
-  const EXPORT_API = '/api/essay/export-docx';
-
   // ===== Elements =====
   const $ = (id) => document.getElementById(id);
   const fileInput = $('fileInput'), cameraInput = $('cameraInput');
   const chooseButton = $('chooseButton'), cameraButton = $('cameraButton');
   const previewWrap = $('previewWrap'), previewImg = $('previewImg'), previewPdf = $('previewPdf'), previewMeta = $('previewMeta');
-  const btnGrade = $('btnGrade'), gradeStatus = $('gradeStatus');
+  const btnRun = $('btnRun'), runStatus = $('runStatus');
   const essayText = $('essayText'), titleEl = $('title'), rubricEl = $('rubric');
-  const resultCard = $('resultCard'), scContent = $('scContent'), scComm = $('scComm'), scOrg = $('scOrg'), scLang = $('scLang'), scTotal = $('scTotal');
-  const suggestions = $('suggestions'), btnExportDocx = $('btnExportDocx'), rubricExplain = $('rubricExplain');
+  const resultCard = $('resultCard'), scContent = $('scContent'), scComm = $('scComm'), scOrg = $('scOrg'), scLang = $('scLang'), scTotal = $('scTotal'), badgeRubric = $('badgeRubric');
+  const suggestions = $('suggestions'), rationaleList = $('rationaleList'), btnExportDocx = $('btnExportDocx');
   const rubricRef = $('rubricRef');
   const btnSaveSnapshot = $('btnSaveSnapshot'), btnClearHistory = $('btnClearHistory'), historyList = $('historyList');
-
-  // 标注 DOM
   const annotCard = $('annotCard'), origTextEl = $('origText'), corrTextEl = $('corrText'), diffHtmlEl = $('diffHtml');
+  const overlay = $('overlay');
 
   // ===== State =====
   let selectedFile = null, isPdf = false, compressedDataURL = null;
   let history = [];
 
-  // ===== Init rubric reference =====
+  // ===== Init rubric reference（可编辑模板）=====
   rubricRef.value = `
 SPM Writing
 
@@ -299,7 +322,6 @@ Part 2：
     $('previewMeta').textContent = `File: ${file.name} · Size: ${humanSize(file.size)}`;
 
     if(isPdf){
-      // 前端把 PDF 渲长图，后续按图片流程处理
       previewPdf.classList.add('hidden');
       previewImg.classList.remove('hidden');
 
@@ -308,7 +330,7 @@ Part 2：
         previewImg.src = longImageDataURL;
 
         compressedDataURL = longImageDataURL;
-        isPdf = false; // 转成图片后按图片分支上传
+        isPdf = false;
         selectedFile = new File(
           [dataURLtoBlob(longImageDataURL)],
           (file.name.replace(/\.pdf$/i, '') || 'document') + '.jpg',
@@ -326,7 +348,6 @@ Part 2：
       return;
     }
 
-    // 图片：压缩预览
     const reader = new FileReader();
     reader.onload = async (ev)=>{
       const dataURL = ev.target.result;
@@ -360,109 +381,131 @@ Part 2：
     return new Blob([u8],{type:mime});
   }
 
-  // ===== 一键提取+评分 =====
-  btnGrade.addEventListener('click', async ()=>{
-    gradeStatus.textContent = '';
-    btnGrade.disabled = true; const old = btnGrade.textContent; btnGrade.textContent = 'Working…';
+  // ===== Single-step: Extract + Score =====
+  btnRun.addEventListener('click', runExtractAndScore);
+
+  async function runExtractAndScore(){
+    runStatus.textContent = '';
+    const old = btnRun.textContent;
+    btnRun.disabled = true; btnRun.textContent = 'Processing…';
+    overlay.classList.add('show');
 
     try{
-      let payloadIsForm = false;
-      let body;
+      // 1) Extract & Correct
+      const { original, corrected, dc_explanations } = await doDirectCorrect();
 
-      if(selectedFile){
-        // 文件优先：图片 / （前端转图后的）PDF
-        const fd = new FormData();
-        fd.append('title', titleEl.value || '');
-        fd.append('rubric', rubricEl.value || 'SPM_P1');
-        // 若你想把 rubricRef 也传给后端作提示，可解开：
-        // fd.append('rubric_ref', rubricRef.value || '');
-        if(!compressedDataURL) throw new Error('Image not ready yet.');
-        const blob = dataURLtoBlob(compressedDataURL);
-        fd.append('file', blob, (selectedFile.name||'image')+'.jpg');
-        payloadIsForm = true;
-        body = fd;
-      }else{
-        // 直接文本评分
-        const txt = (essayText.value || '').trim();
-        if(!txt) throw new Error('Provide a file or text.');
-        body = JSON.stringify({
-          title: titleEl.value || '',
-          rubric: rubricEl.value || 'SPM_P1',
-          text: txt,
-          // rubric_ref: rubricRef.value || ''   // 如需后端使用参考细则
-        });
-      }
+      // 更新编辑器、标注
+      essayText.value = corrected || original || '';
+      renderAnnotations(original || '', corrected || original || '');
 
-      const res = await fetch(GRADE_API, {
-        method: 'POST',
-        headers: payloadIsForm ? undefined : { 'Content-Type': 'application/json' },
-        body
-      });
-      const json = await res.json();
-      if(!res.ok || !json.ok) throw new Error(json.error || 'Grade failed');
+      // 2) Grade
+      const gradePayload = await doGrade(essayText.value.trim(), rubricEl.value, titleEl.value || '');
+      renderScore(gradePayload, rubricEl.value);
 
-      const original   = json.extracted || json.original || '';
-      const corrected  = json.corrected || '';
-      const scores     = json.scores || {};
-      const suggs      = Array.isArray(json.suggestions) ? json.suggestions : [];
-      const explainObj = json.rubric_explanations || json.explanations || {};
-      const explainArr = Array.isArray(explainObj) ? explainObj : objToPairs(explainObj);
-
-      // 写入编辑器 & 标注
-      essayText.value = corrected || original;
-      renderAnnotations(original, corrected);
-
-      // 分数卡
-      renderScore({scores, suggestions: suggs, explanations: explainArr});
-
-      gradeStatus.textContent = '✅ Done.';
-
-      // 保存历史
+      // 3) Save history
       pushHistory({
         time: new Date().toLocaleString(),
         title: titleEl.value || '',
         rubric: rubricEl.value || '',
-        extracted: original,
-        corrected: corrected,
-        explanations: Array.isArray(explainObj) ? explainObj : explainArr,
-        scores
+        extracted: original || '',
+        corrected: corrected || original || '',
+        explanations: Array.isArray(dc_explanations) ? dc_explanations : []
       });
 
+      runStatus.textContent = '✅ Done.';
     }catch(err){
       console.error(err);
-      gradeStatus.textContent = '❌ Failed. Please check API.';
+      runStatus.textContent = '❌ Failed. Check API / network.';
+      alert(err.message || 'AI processing failed.');
     }finally{
-      btnGrade.disabled = false; btnGrade.textContent = old;
+      btnRun.disabled = false; btnRun.textContent = old;
+      overlay.classList.remove('show');
     }
-  });
-
-  function objToPairs(o){
-    try{
-      return Object.entries(o).map(([k,v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
-    }catch{ return []; }
   }
 
-  // ===== 渲染评分卡 =====
-  function renderScore(payload){
+  async function doDirectCorrect(){
+    const fd = new FormData();
+    fd.append('title', titleEl.value || '');
+
+    // 优先文件；否则用文本
+    const rawText = (essayText.value || '').trim();
+    if(selectedFile){
+      if(isPdf){
+        // 保险分支：正常不会走到这，PDF 已转 JPG
+        fd.append('file', selectedFile, selectedFile.name);
+      }else{
+        if(!compressedDataURL) throw new Error('Image not ready yet.');
+        const blob = dataURLtoBlob(compressedDataURL);
+        fd.append('file', blob, (selectedFile.name||'image')+'.jpg');
+      }
+    }else if(rawText){
+      fd.append('text', rawText);
+    }else{
+      throw new Error('Provide a file or text.');
+    }
+
+    const res = await fetch('/api/essay/direct-correct', { method:'POST', body:fd });
+    const json = await res.json().catch(()=>({}));
+    if(!res.ok || !json.ok){
+      throw new Error(json.error || 'Extract/Correct failed.');
+    }
+    return {
+      original: json.extracted || '',
+      corrected: json.corrected || json.extracted || '',
+      dc_explanations: json.explanations || []
+    };
+  }
+
+  async function doGrade(text, rubric, title){
+    if(!text) throw new Error('Empty text to grade.');
+    const res = await fetch('/api/grade', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ title: title || '', rubric, text })
+    });
+    const json = await res.json().catch(()=>({}));
+    if(!res.ok || !json.ok){
+      throw new Error(json.error || 'Grade failed.');
+    }
+    return json;
+  }
+
+  function renderScore(payload, rubricCode){
     resultCard.classList.remove('hidden');
+    badgeRubric.textContent = rubricCode || '-';
+
     const s = payload.scores || {};
-    scContent.textContent = valOrDash(s.content);
-    scComm.textContent   = valOrDash(s.communicative ?? s.communicative_achievement);
-    scOrg.textContent    = valOrDash(s.organisation ?? s.organization);
-    scLang.textContent   = valOrDash(s.language);
-    scTotal.textContent  = valOrDash(s.total);
+    scContent.textContent = valNum(s.content);
+    scComm.textContent   = valNum(s.communicative ?? s.communicative_achievement);
+    scOrg.textContent    = valNum(s.organisation);
+    scLang.textContent   = valNum(s.language);
+    scTotal.textContent  = valNum(s.total);
+
+    // 评分细则解释（兼容多字段命名）
+    const rationales = []
+      .concat(payload.rationales || [])
+      .concat(payload.explanations || [])
+      .concat(payload.criteria_explanations || [])
+      .concat(payload.rubric_breakdown || []);
+
+    rationaleList.innerHTML = '';
+    rationales.forEach(x=>{
+      if(!x) return;
+      const li = document.createElement('li'); li.textContent = typeof x === 'string' ? x : JSON.stringify(x);
+      rationaleList.appendChild(li);
+    });
+    if(!rationales.length){
+      const li = document.createElement('li'); li.textContent = 'No detailed explanations returned by the API.';
+      rationaleList.appendChild(li);
+    }
 
     suggestions.innerHTML = '';
     (payload.suggestions || []).forEach(x=>{
       const li = document.createElement('li'); li.textContent = x; suggestions.appendChild(li);
     });
-
-    rubricExplain.innerHTML = '';
-    (payload.explanations || []).forEach(x=>{
-      const li = document.createElement('li'); li.textContent = typeof x === 'string' ? x : JSON.stringify(x); rubricExplain.appendChild(li);
-    });
   }
-  function valOrDash(v){ return (v === 0 || v) ? v : '-'; }
+
+  function valNum(x){ return (x ?? '-') }
 
   // ===== 原文标注渲染 =====
   function renderAnnotations(original, corrected){
@@ -473,7 +516,7 @@ Part 2：
     annotCard.classList.remove('hidden');
   }
 
-  // 词级 LCS Diff
+  // 词级 LCS 比对：输出含 <ins>/<del> 的 HTML
   function makeAnnotatedDiff(a, b){
     const at = tokenize(a);
     const bt = tokenize(b);
@@ -484,7 +527,8 @@ Part 2：
       while(i < ti){ html += `<del>${escapeHTML(at[i])}</del>`; i++; }
       while(j < tj){ html += `<ins>${escapeHTML(bt[j])}</ins>`; j++; }
       if (ti < at.length && tj < bt.length){
-        html += escapeHTML(at[ti]); i = ti + 1; j = tj + 1;
+        html += escapeHTML(at[ti]);
+        i = ti + 1; j = tj + 1;
       }
     }
     while(i < at.length){ html += `<del>${escapeHTML(at[i++])}</del>`; }
@@ -507,27 +551,29 @@ Part 2：
         dp[i][j] = (a[i]===b[j]) ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
       }
     }
-    const path=[]; let i=0, j=0;
+    const path=[];
+    let i=0, j=0;
     while(i<n && j<m){
       if(a[i]===b[j]){ path.push([i,j]); i++; j++; }
-      else if(dp[i+1][j] >= dp[i][j+1]) i++; else j++;
+      else if(dp[i+1][j] >= dp[i][j+1]) i++;
+      else j++;
     }
     return path;
   }
 
-  // ===== 导出 DOCX =====
+  // ===== Export DOCX =====
   btnExportDocx.addEventListener('click', async ()=>{
     const corrected = (essayText.value || '').trim();
     if(!corrected){ alert('Nothing to export.'); return; }
     try{
-      const res = await fetch(EXPORT_API, {
+      const res = await fetch('/api/essay/export-docx', {
         method:'POST',
         headers:{ 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: $('title').value || 'Essay Report',
           extracted: origTextEl?.textContent || '',
           corrected: corrected,
-          explanations: Array.from(rubricExplain.querySelectorAll('li')).map(li=>li.textContent)
+          explanations: Array.from(rationaleList.querySelectorAll('li')).map(li=>li.textContent).slice(0,10)
         })
       });
       const json = await res.json();
@@ -542,7 +588,7 @@ Part 2：
     }
   });
 
-  // ===== 历史记录 =====
+  // ===== Local history (domain + current browser only) =====
   function pushHistory(item){
     history.unshift(item);
     history = history.slice(0, 50);
@@ -560,17 +606,9 @@ Part 2：
           <p><strong>Rubric:</strong> ${escapeHTML(h.rubric||'-')}</p>
           ${h.extracted ? `<div><strong>Extracted:</strong><br>${escapeHTML(h.extracted)}</div>`:''}
           ${h.corrected ? `<div><strong>Corrected:</strong><br>${escapeHTML(h.corrected)}</div>`:''}
-          ${h.scores ? `<div class="grid grid-cols-5 gap-2">
-              <div><b>C</b>: ${valOrDash(h.scores.content)}</div>
-              <div><b>Comm</b>: ${valOrDash(h.scores.communicative ?? h.scores.communicative_achievement)}</div>
-              <div><b>Org</b>: ${valOrDash(h.scores.organisation ?? h.scores.organization)}</div>
-              <div><b>Lang</b>: ${valOrDash(h.scores.language)}</div>
-              <div><b>Total</b>: ${valOrDash(h.scores.total)}</div>
-            </div>`: ''
-          }
           ${(h.explanations||[]).length ? `
-            <div><strong>Rubric explanations:</strong>
-              <ul class="list-disc pl-5">${h.explanations.map(x=>`<li>${escapeHTML(typeof x==='string'?x:JSON.stringify(x))}</li>`).join('')}</ul>
+            <div><strong>Explanations:</strong>
+              <ul class="list-disc pl-5">${h.explanations.map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul>
             </div>` : ''
           }
           <div class="pt-1">
@@ -603,25 +641,18 @@ Part 2：
     });
   }
 
-  btnSaveSnapshot.addEventListener('click', ()=>{
+  $('btnSaveSnapshot').addEventListener('click', ()=>{
     pushHistory({
       time: new Date().toLocaleString(),
       title: titleEl.value || '',
       rubric: rubricEl.value || '',
       extracted: origTextEl?.textContent || '',
       corrected: (essayText.value||'').trim(),
-      explanations: Array.from(rubricExplain.querySelectorAll('li')).map(li=>li.textContent),
-      scores: {
-        content: scContent.textContent,
-        communicative: scComm.textContent,
-        organisation: scOrg.textContent,
-        language: scLang.textContent,
-        total: scTotal.textContent
-      }
+      explanations: Array.from(rationaleList.querySelectorAll('li')).map(li=>li.textContent).slice(0,10)
     });
   });
 
-  btnClearHistory.addEventListener('click', ()=>{
+  $('btnClearHistory').addEventListener('click', ()=>{
     if(confirm('Clear all local history?')){
       history = [];
       localStorage.removeItem('essayProHistory');
@@ -634,5 +665,5 @@ Part 2：
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
-</script>
+</script> 
 @endsection
