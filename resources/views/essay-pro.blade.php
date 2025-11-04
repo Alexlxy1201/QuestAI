@@ -561,13 +561,21 @@ Part 2：
     return path;
   }
   btnExportDocx.addEventListener('click', async ()=>{
-    const corrected = (essayText.value || '').trim();
-    if(!corrected){ alert('没有可导出的内容'); return; }
+  const corrected = (essayText.value || '').trim();
+  if(!corrected){ alert('没有可导出的内容'); return; }
 
-    try{
-      const explanations = Array.from(document.querySelectorAll('#rationaleList li')).map(li => li.textContent).slice(0, 20);
+  const explanations = Array.from(document.querySelectorAll('#rationaleList li'))
+                            .map(li => li.textContent).slice(0, 20);
 
-      const res = await fetch('/api/essay/export-docx', {
+  // 1) 正常 API 路径（绝对 URL）
+  const tryUrls = [
+    "{{ url('/api/essay/export-docx') }}",
+    "{{ url('/index.php/api/essay/export-docx') }}" // 2) 兜底：显式走 index.php，绕过重写
+  ];
+
+  for (const u of tryUrls) {
+    try {
+      const res = await fetch(u, {
         method:'POST',
         headers:{ 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -578,25 +586,27 @@ Part 2：
         })
       });
 
-      if(!res.ok){
-        const msg = await res.text().catch(()=> 'Export failed.');
-        throw new Error(msg);
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (res.ok && ct.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'essay-report.docx';
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+        return; // ✅ 成功后直接返回
+      } else {
+        // 打印前 300 字便于排错
+        const text = await res.text();
+        console.warn('Export fallback - not docx from', u, res.status, ct, text.slice(0,300));
       }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'essay-report.docx';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    }catch(err){
-      console.error(err);
-      alert('❌ 导出失败：' + (err.message || 'Export failed.'));
+    } catch (e) {
+      console.warn('Export request failed for', u, e);
     }
-  });
+  }
+
+  alert('❌ 导出失败：后端未返回 DOCX（路由未命中或被重定向到页面）。');
+});
 
 
   // ===== Local history (domain + current browser only) =====
