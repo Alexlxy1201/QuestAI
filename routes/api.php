@@ -21,7 +21,7 @@ Route::post('/correct', function (Request $request) {
 
     $apiKey = env('OPENAI_API_KEY');
     $model = env('OPENAI_MODEL', 'gpt-4o-mini');
-    $base = env('OPENAI_BASE_URL', 'https://api.openai.com/v1');
+    $base = rtrim(env('OPENAI_BASE_URL', 'https://api.openai.com/v1'), '/');
 
     try {
         $prompt = <<<PROMPT
@@ -69,7 +69,7 @@ Route::post('/generate-quiz', function (Request $request) {
 
     $apiKey = env('OPENAI_API_KEY');
     $model = env('OPENAI_MODEL', 'gpt-4o-mini');
-    $base = env('OPENAI_BASE_URL', 'https://api.openai.com/v1');
+    $base = rtrim(env('OPENAI_BASE_URL', 'https://api.openai.com/v1'), '/');
 
     $prompt = <<<PROMPT
 Generate {$count} English reading comprehension questions from the text below.
@@ -112,5 +112,5 @@ PROMPT;
 // === 📘 Quiz Solver ===
 Route::post('/solve', [SolveController::class, 'solve']);
 
-// === 🏫 AI Grader ===
+// === 🏫 AI Grader ===（你已有）
 Route::post('/grader', [GradeController::class, 'evaluate']);
