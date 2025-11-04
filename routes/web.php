@@ -3,31 +3,39 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\SolveController;
 use App\Http\Controllers\GradeController;
+use App\Http\Controllers\EssayController;
 
-// === 🏠 Home Page ===
-Route::get('/', function () {
-    return view('home');
-})->name('home');
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+*/
 
-// === 📘 Quiz Solver Page ===
+// 🏠 Home
+Route::get('/', fn() => view('home'))->name('home');
+
+// 📘 Quiz Solver
 Route::get('/solve', [SolveController::class, 'index'])->name('solve.index');
 
-// === ✍️ English Corrector Page ===
+// ✍️ English Corrector
 Route::get('/corrector', fn() => view('corrector'))->name('corrector.index');
 
-// === 🧠 Quiz Generator Page ===
+// 🧠 Quiz Generator
 Route::get('/generator', fn() => view('generator'))->name('generator.index');
 
-// === 🏫 AI Grader Page ===
+// 🏫 AI Grader（页面）
 Route::get('/grader', [GradeController::class, 'index'])->name('grader');
 Route::post('/grader', [GradeController::class, 'evaluate'])->name('grader.evaluate');
 
-// === 🧾 Environment check ===
+// 📝 Essay Pro（新页面）
+Route::get('/essay-pro', [EssayController::class, 'index'])->name('essay.pro');
+
+// 🧾 Env check（可选）
 Route::get('/envcheck', function () {
     return response()->json([
-        'app_url' => env('APP_URL'),
-        'model' => env('OPENAI_MODEL'),
-        'key_exists' => env('OPENAI_API_KEY') ? true : false,
+        'app_url'     => env('APP_URL'),
+        'model'       => env('OPENAI_MODEL'),
+        'key_exists'  => (bool) env('OPENAI_API_KEY'),
         'key_preview' => substr(env('OPENAI_API_KEY') ?? '', 0, 8),
     ]);
 });

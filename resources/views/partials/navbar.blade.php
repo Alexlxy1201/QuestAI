@@ -22,6 +22,14 @@
           🏠 Home
         </a>
 
+        {{-- 📝 Essay Pro （修正为 essay.pro）--}}
+        <a href="{{ route('essay.pro') }}"
+           class="px-4 py-2 rounded-xl text-sm font-semibold transition
+           {{ request()->routeIs('essay.pro') ? 'bg-sky-700 text-white shadow-md scale-105'
+                                              : 'text-gray-800 hover:bg-sky-50 hover:text-sky-700' }}">
+          📝 Essay Pro
+        </a>
+        
         {{-- 📘 Quiz Solver --}}
         <a href="{{ route('solve.index') }}"
           class="px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 
@@ -78,6 +86,12 @@
         {{ request()->routeIs('home') ? 'bg-indigo-100 text-indigo-800' : 'text-gray-700 hover:bg-gray-100' }}">
         🏠 Home
       </a>
+      
+      <a href="{{ route('solve.index') }}" 
+        class="block px-3 py-2 rounded-md text-base font-semibold 
+        {{ request()->routeIs('solve.*') ? 'bg-blue-100 text-blue-800' : 'text-gray-700 hover:bg-gray-100' }}">
+        📝 Essay Pro
+      </a>
 
       <a href="{{ route('solve.index') }}" 
         class="block px-3 py-2 rounded-md text-base font-semibold 
@@ -102,6 +116,7 @@
         {{ request()->routeIs('grader*') ? 'bg-cyan-100 text-cyan-800' : 'text-gray-700 hover:bg-gray-100' }}">
         🏫 Grader
       </a>
+
     </div>
   </div>
 </nav>
