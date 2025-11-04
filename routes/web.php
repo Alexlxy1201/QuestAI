@@ -64,3 +64,12 @@ Route::post('/essay/export-docx-direct', [EssayApiController::class, 'exportDocx
 
 /* 可选：探针路由，浏览器打开应显示 "pong" */
 Route::get('/essay/export-docx/ping', fn() => response('pong', 200));
+
+
+// 兜底（免 CSRF），避免被静态托管重写到首页
+Route::post('/essay/export-docx-direct', [EssayApiController::class, 'exportDocx'])
+    ->withoutMiddleware([VerifyCsrfToken::class])
+    ->name('web.essay.exportDocxDirect');
+
+// 健康探针（可选）
+Route::get('/essay/export-docx/ping', fn() => response('pong', 200));

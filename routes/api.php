@@ -23,6 +23,11 @@ Route::post('/essay/export-docx', [EssayApiController::class, 'exportDocx'])
 Route::post('/ocr',   [EssayApiController::class, 'ocr'])->name('api.ocr');
 Route::post('/grade', [EssayApiController::class, 'grade'])->name('api.grade');
 
+Route::post('/essay/direct-correct', [EssayApiController::class, 'directCorrect'])->name('api.essay.directCorrect');
+Route::post('/essay/export-docx',     [EssayApiController::class, 'exportDocx'])->name('api.essay.exportDocx');
+Route::post('/ocr',   [EssayApiController::class, 'ocr'])->name('api.ocr');
+Route::post('/grade', [EssayApiController::class, 'grade'])->name('api.grade');
+
 // 历史：为了兼容老前端，但现在“仅本地存储”，服务端返回 410
 Route::get('/essay/history', function () {
     return response()->json([
