@@ -12,7 +12,9 @@ use PhpOffice\PhpWord\Shared\Html;
 
 class EssayApiController extends Controller
 {
-    /* ======================  OCR  ====================== */
+    /**
+     * 传统 OCR：image/pdf -> text （不落库）
+     */
     public function ocr(Request $request)
     {
         $data = $request->validate([
@@ -67,12 +69,14 @@ class EssayApiController extends Controller
         return response()->json(['ok'=>true,'text'=>$text,'pages'=>$pages]);
     }
 
-    /* ======================  Grade  ====================== */
+    /**
+     * 打分（Rubric），不落库
+     */
     public function grade(Request $request)
     {
         $payload = $request->validate([
             'title'  => ['nullable','string'],
-            'rubric' => ['required','string'],
+            'rubric' => ['required','string'], // SPM_P1 | SPM_P2 | SPM_P3 | UASA_P1 | UASA_P2
             'text'   => ['required','string'],
         ]);
 
@@ -123,7 +127,9 @@ SYS;
         return response()->json(['ok'=>true,'scores'=>$scores,'suggestions'=>$sugs]);
     }
 
-    /* ======================  Direct Correct  ====================== */
+    /**
+     * 直接“提取 + 润色”：文件(图片/PDF)或纯文本 -> 提取文本/润色/解释（不落库）
+     */
     public function directCorrect(Request $request)
     {
         $data = $request->validate([
@@ -148,8 +154,54 @@ SYS;
         $explainArr = [];
 
         if ($request->hasFile('file')) {
-            // file input branch (kept unchanged)
-            // ...
+            $file = $request->file('file');
+            $mime = $file->getMimeType();
+            $path = $file->store('essays/uploads');
+            $abs  = Storage::path($path);
+
+            if ($mime === 'application/pdf') {
+                $textLayer = '';
+                if (class_exists(\Smalot\PdfParser\Parser::class)) {
+                    try {
+                        $parser = new \Smalot\PdfParser\Parser();
+                        $pdf    = $parser->parseFile($abs);
+                        $textLayer = trim($pdf->getText() ?? '');
+                    } catch (\Throwable $e) { /* ignore */ }
+                }
+                if ($textLayer !== '') {
+                    $extracted = $textLayer;
+                } elseif (class_exists(\Imagick::class)) {
+                    $maxPages = $data['max_pages'] ?? 3;
+                    $im = new \Imagick();
+                    $im->setResolution(200, 200);
+                    $im->readImage($abs);
+                    $n = min($im->getNumberImages(), $maxPages);
+                    $images = [];
+                    $i = 0;
+                    foreach ($im as $page) {
+                        if ($i++ >= $n) break;
+                        $page->setImageFormat('png');
+                        $images[] = $page->getImageBlob();
+                    }
+                    $im->clear(); $im->destroy();
+
+                    $result = $this->imageExtractAndCorrect($images, $apiKey, $model, $base);
+                    $extracted  = $result['extracted'] ?? '';
+                    $corrected  = $result['corrected'] ?? '';
+                    $explainArr = $result['explanations'] ?? [];
+                } else {
+                    return response()->json([
+                        'ok'=>false,
+                        'error'=>'PDF has no text layer. Install Imagick to process scanned PDFs.',
+                    ], 400);
+                }
+            } else {
+                $blob = file_get_contents($abs);
+                $result = $this->imageExtractAndCorrect([$blob], $apiKey, $model, $base);
+                $extracted  = $result['extracted'] ?? '';
+                $corrected  = $result['corrected'] ?? '';
+                $explainArr = $result['explanations'] ?? [];
+            }
         }
 
         if ($extracted === null) {
@@ -162,9 +214,9 @@ You are an English grammar and clarity corrector.
 Please correct/improve the text and explain the changes.
 Return JSON with keys:
 {
-  "extracted": "<original>",
-  "corrected": "<improved>",
-  "explanations": ["pointwise explanations..."]
+  "extracted": "<the original text you receive>",
+  "corrected": "<improved text>",
+  "explanations": ["pointwise explanations ..."]
 }
 Text:
 """{$extracted}"""
@@ -182,6 +234,14 @@ PROMPT;
                 'temperature' => 0.2,
                 'response_format' => ['type'=>'json_object'],
             ]);
+
+            if (!$res->successful()) {
+                return response()->json([
+                    'ok'=>false,
+                    'error'=>'OpenAI correct request failed',
+                    'details'=>$res->json() ?: ['status'=>$res->status()],
+                ], 500);
+            }
 
             $content = $res->json('choices.0.message.content') ?? '{}';
             $parsed  = json_decode($content, true) ?: [];
@@ -204,7 +264,9 @@ PROMPT;
         return response()->json($resp);
     }
 
-    /* ======================  Export DOCX (Full Report)  ====================== */
+    /**
+     * 导出完整报告 DOCX（含 AI Score, Explanations, Suggestions, InlineDiff）
+     */
     public function exportDocx(Request $request)
     {
         try {
@@ -231,7 +293,6 @@ PROMPT;
             if ($rubric) $section->addText("Rubric: {$rubric}", ['italic' => true, 'size' => 11]);
             $section->addTextBreak(1);
 
-            // Table
             $scores = array_merge([
                 'content' => null,
                 'communicative' => null,
@@ -268,7 +329,6 @@ PROMPT;
 
             $section->addTextBreak(1);
 
-            // Explanations
             $section->addText("Criterion Explanations", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
             if (empty($explanations)) {
                 $section->addText("No detailed explanations returned by the API.", ['italic' => true]);
@@ -277,7 +337,6 @@ PROMPT;
             }
             $section->addTextBreak(1);
 
-            // Suggestions
             $section->addText("Revision Suggestions", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
             if (empty($suggestions)) {
                 $section->addText("No revision suggestions returned by the API.", ['italic' => true]);
@@ -286,7 +345,6 @@ PROMPT;
             }
             $section->addTextBreak(1);
 
-            // Inline diff
             $section->addText("Inline Diff", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
             if ($inlineDiff) {
                 Html::addHtml($section, $inlineDiff, false, false);
@@ -295,7 +353,6 @@ PROMPT;
             }
             $section->addTextBreak(1);
 
-            // Original & corrected
             $section->addText("Original Essay", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
             $section->addText($extracted ?: '-', ['size' => 11]);
             $section->addTextBreak(1);
@@ -317,7 +374,6 @@ PROMPT;
         }
     }
 
-    /* ======================  Smoke Test  ====================== */
     public function exportDocxSmoke()
     {
         $w = new PhpWord();
@@ -336,7 +392,6 @@ PROMPT;
         ]);
     }
 
-    /* ============ visionOCR helper (unchanged) ============ */
     private function visionOCR(string $blob, string $mime): string
     {
         $apiKey = env('OPENAI_API_KEY');
@@ -366,5 +421,80 @@ PROMPT;
             throw new \RuntimeException('OpenAI OCR failed: '.json_encode($res->json()));
         }
         return trim($res->json('choices.0.message.content') ?? '');
+    }
+
+    private function imageExtractAndCorrect(array $imageBlobs, string $apiKey, string $model, string $base): array
+    {
+        $makeContent = function(string $type) use ($imageBlobs) {
+            $content = [[
+                'type' => 'text',
+                'text' => "Extract all readable English text from the images, then correct/improve it. Return JSON with keys: {extracted, corrected, explanations[]}.",
+            ]];
+            foreach ($imageBlobs as $blob) {
+                $b64 = base64_encode($blob);
+                $content[] = ['type'=>'image_url','image_url'=>['url'=>"data:image/png;base64,{$b64}"]];
+            }
+            return $content;
+        };
+
+        $res = Http::withHeaders([
+            'Authorization' => "Bearer {$apiKey}",
+            'Content-Type'  => 'application/json',
+        ])->post("{$base}/chat/completions", [
+            'model' => $model,
+            'messages' => [[ 'role'=>'user', 'content'=>$makeContent('image_url') ]],
+            'temperature' => 0.0,
+            'response_format' => ['type'=>'json_object'],
+        ]);
+
+        if (!$res->successful()) {
+            $detail = $res->json() ?: ['status'=>$res->status()];
+            throw new \RuntimeException('Vision extract+correct failed: '.json_encode($detail, JSON_UNESCAPED_UNICODE));
+        }
+
+        $content = $res->json('choices.0.message.content') ?? '{}';
+        return json_decode($content, true) ?: [];
+    }
+
+    private function buildDocxAndGetUrl(string $title, string $extracted, string $corrected, array $explanations): string
+    {
+        if (!class_exists(\PhpOffice\PhpWord\PhpWord::class)) {
+            throw new \RuntimeException('PhpOffice\\PhpWord not installed. Run: composer require phpoffice/phpword');
+        }
+
+        $phpWord = new \PhpOffice\PhpWord\PhpWord();
+        $phpWord->setDefaultFontName('Calibri');
+        $phpWord->setDefaultFontSize(11);
+
+        $section = $phpWord->addSection();
+        $section->addTitle('Essay Report', 1);
+        if ($title) { $section->addText("Title: {$title}", ['bold'=>true]); }
+        $section->addTextBreak(1);
+
+        $section->addTitle('Extracted Text', 2);
+        $section->addText($extracted !== '' ? $extracted : '-', []);
+        $section->addTextBreak(1);
+
+        $section->addTitle('Corrected / Improved', 2);
+        $section->addText($corrected !== '' ? $corrected : '-', []);
+        $section->addTextBreak(1);
+
+        if (!empty($explanations)) {
+            $section->addTitle('Explanations', 2);
+            foreach ($explanations as $ex) {
+                $section->addListItem($ex, 0, [], ['listType' => \PhpOffice\PhpWord\Style\ListItem::TYPE_BULLET_FILLED]);
+            }
+        }
+
+        if (!Storage::disk('public')->exists('essay_reports')) {
+            Storage::disk('public')->makeDirectory('essay_reports');
+        }
+        $filename = 'essay_report_'.date('Ymd_His').'.docx';
+        $fullPath = Storage::path('public/essay_reports/'.$filename);
+
+        $writer = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+        $writer->save($fullPath);
+
+        return asset('storage/essay_reports/'.$filename);
     }
 }
