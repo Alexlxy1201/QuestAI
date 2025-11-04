@@ -268,9 +268,8 @@ PROMPT;
     }
 
     /**
-     * 导出 Word（.docx）到 storage/public/essay_reports/xxx.docx
-     * 需要：composer require phpoffice/phpword
-     *       php artisan storage:link
+     * 导出 Word（.docx）—— 改为“直接流式下载”，不落地、不依赖 URL
+     * 需要：composer require phpoffice/phpword 且启用 ext-zip
      */
     public function exportDocx(Request $request)
     {
@@ -281,14 +280,26 @@ PROMPT;
             'explanations' => ['nullable','array'],
         ]);
 
-        $url = $this->buildDocxAndGetUrl(
-            $payload['title'] ?? 'Essay Report',
-            $payload['extracted'],
-            $payload['corrected'],
-            $payload['explanations'] ?? []
-        );
+        $title        = trim($payload['title'] ?? 'Essay Report');
+        $extracted    = $payload['extracted'];
+        $corrected    = $payload['corrected'];
+        $explanations = $payload['explanations'] ?? [];
 
-        return response()->json(['ok'=>true, 'url'=>$url]);
+        // 构建 PhpWord 文档对象（内存）
+        $phpWord = $this->buildDocxPhpWord($title, $extracted, $corrected, $explanations);
+
+        // 安全文件名
+        $filename = preg_replace('/[^\w\-]+/u', '_', $title) . '.docx';
+
+        return response()->streamDownload(function () use ($phpWord) {
+            $writer = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type'      => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'Cache-Control'     => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma'            => 'no-cache',
+            'X-Accel-Buffering' => 'no',
+        ]);
     }
 
     /* ===== 占位：由于“仅本地存储”，这两个接口不提供服务端历史 ===== */
@@ -339,7 +350,7 @@ PROMPT;
         $makeContent = function(string $type) use ($imageBlobs) {
             $content = [[
                 'type' => 'text',
-                'text' => "Extract all readable English text from the images, then correct/improve it. Return JSON with keys: {extracted, corrected, explanations[]}."
+                'text' => "Extract all readable English text from the images, then correct/improve it. Return JSON with keys: {extracted, corrected, explanations[]}.",
             ]];
             foreach ($imageBlobs as $blob) {
                 $b64 = base64_encode($blob);
@@ -385,7 +396,51 @@ PROMPT;
         return json_decode($content, true) ?: [];
     }
 
-    /* ====== 工具函数：生成 DOCX 并返回 URL ====== */
+    /**
+     * 工具函数：构建 PhpWord 文档对象（不落地）
+     */
+    private function buildDocxPhpWord(string $title, string $extracted, string $corrected, array $explanations)
+    {
+        if (!class_exists(\PhpOffice\PhpWord\PhpWord::class)) {
+            throw new \RuntimeException('PhpOffice\\PhpWord not installed. Run: composer require phpoffice/phpword');
+        }
+
+        $phpWord = new \PhpOffice\PhpWord\PhpWord();
+        $phpWord->setDefaultFontName('Calibri');
+        $phpWord->setDefaultFontSize(11);
+
+        $phpWord->addTitleStyle(1, ['size'=>18,'bold'=>true]);
+        $phpWord->addTitleStyle(2, ['size'=>14,'bold'=>true]);
+
+        $section = $phpWord->addSection();
+        $section->addTitle('Essay Report', 1);
+        if ($title) { $section->addText("Title: {$title}", ['bold'=>true]); }
+        $section->addText(date('Y-m-d H:i:s'), ['color'=>'777777','size'=>10]);
+        $section->addTextBreak(1);
+
+        $section->addTitle('Original (Extracted)', 2);
+        foreach (preg_split("/\r\n|\n|\r/", $extracted !== '' ? $extracted : '-') as $line) {
+            $section->addText($line ?: ' ');
+        }
+        $section->addTextBreak(1);
+
+        $section->addTitle('Corrected / Improved', 2);
+        foreach (preg_split("/\r\n|\n|\r/", $corrected !== '' ? $corrected : '-') as $line) {
+            $section->addText($line ?: ' ');
+        }
+        $section->addTextBreak(1);
+
+        if (!empty($explanations)) {
+            $section->addTitle('Rationales / Explanations', 2);
+            foreach ($explanations as $ex) {
+                $section->addListItem(is_string($ex) ? $ex : json_encode($ex, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));
+            }
+        }
+
+        return $phpWord;
+    }
+
+    /* ====== （保留）生成 DOCX 文件到存储并返回 URL —— 兼容其它旧逻辑 ====== */
     private function buildDocxAndGetUrl(string $title, string $extracted, string $corrected, array $explanations): string
     {
         if (!class_exists(\PhpOffice\PhpWord\PhpWord::class)) {
@@ -416,7 +471,7 @@ PROMPT;
             }
         }
 
-        // 保存到 public 磁盘
+        // 保存到 public 磁盘（旧方式）
         if (!Storage::disk('public')->exists('essay_reports')) {
             Storage::disk('public')->makeDirectory('essay_reports');
         }

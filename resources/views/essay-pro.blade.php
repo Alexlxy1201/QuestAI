@@ -560,33 +560,44 @@ Part 2：
     }
     return path;
   }
-
-  // ===== Export DOCX =====
   btnExportDocx.addEventListener('click', async ()=>{
     const corrected = (essayText.value || '').trim();
-    if(!corrected){ alert('Nothing to export.'); return; }
+    if(!corrected){ alert('没有可导出的内容'); return; }
+
     try{
+      const explanations = Array.from(document.querySelectorAll('#rationaleList li')).map(li => li.textContent).slice(0, 20);
+
       const res = await fetch('/api/essay/export-docx', {
         method:'POST',
         headers:{ 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: $('title').value || 'Essay Report',
-          extracted: origTextEl?.textContent || '',
+          title: document.getElementById('title').value || 'Essay Report',
+          extracted: document.getElementById('origText')?.textContent || '',
           corrected: corrected,
-          explanations: Array.from(rationaleList.querySelectorAll('li')).map(li=>li.textContent).slice(0,10)
+          explanations: explanations
         })
       });
-      const json = await res.json();
-      if(!res.ok || !json.ok) throw new Error(json.error || 'Export failed');
 
+      if(!res.ok){
+        const msg = await res.text().catch(()=> 'Export failed.');
+        throw new Error(msg);
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = json.url; a.download = 'essay-report.docx';
-      document.body.appendChild(a); a.click(); a.remove();
+      a.href = url;
+      a.download = 'essay-report.docx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     }catch(err){
-      alert('❌ Export failed.');
       console.error(err);
+      alert('❌ 导出失败：' + (err.message || 'Export failed.'));
     }
   });
+
 
   // ===== Local history (domain + current browser only) =====
   function pushHistory(item){
