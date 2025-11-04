@@ -6,9 +6,9 @@
 <div class="min-h-[70vh] flex flex-col items-center justify-center p-4">
   <div class="bg-white shadow-2xl rounded-2xl p-6 w-full max-w-5xl text-left transition-all duration-300">
 
-    <div class="flex items-center justify-between gap-4 mb-4">
-      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
-        ✍️ Essay Pro — AI Grader
+    <div class="flex items-center justify-between gap-4 mb-4"> 
+      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent"> 
+        ✍️ Essay Pro — AI Grader 
       </h1>
       <div class="flex items-center gap-2">
         <button id="btnExportDocx" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition">
@@ -130,6 +130,28 @@
       </div>
     </div>
 
+    {{-- ✅ Annotated Changes（新增：原文标注修改） --}}
+    <div class="bg-white rounded-2xl border mt-6 p-4 hidden" id="annotCard">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xl font-bold">Annotated Changes</h2>
+        <div class="text-xs text-gray-400">Legend: <ins class="annot-ins px-1 mx-1">added/replaced</ins> <del class="annot-del px-1 mx-1">removed</del></div>
+      </div>
+      <div class="grid md:grid-cols-2 gap-4 mt-3">
+        <div class="p-3 rounded-xl bg-gray-50">
+          <div class="text-xs uppercase text-gray-500 mb-1">Original</div>
+          <div id="origText" class="text-sm whitespace-pre-wrap break-words"></div>
+        </div>
+        <div class="p-3 rounded-xl bg-gray-50">
+          <div class="text-xs uppercase text-gray-500 mb-1">Corrected</div>
+          <div id="corrText" class="text-sm whitespace-pre-wrap break-words"></div>
+        </div>
+      </div>
+      <div class="mt-4">
+        <h3 class="text-base font-semibold">Inline Diff</h3>
+        <div id="diffHtml" class="prose prose-sm max-w-none leading-7 whitespace-pre-wrap break-words"></div>
+      </div>
+    </div>
+
     {{-- History (localStorage only) --}}
     <div class="mt-8">
       <div class="flex items-center justify-between mb-2">
@@ -144,6 +166,14 @@
 
   </div>
 </div>
+
+{{-- ===== 简单样式：标注颜色（可按需微调） ===== --}}
+<style>
+  .annot-ins { background: #DCFCE7; border-radius: .25rem; text-decoration: none; }
+  .annot-del { background: #FEE2E2; border-radius: .25rem; text-decoration: line-through; }
+  #diffHtml ins { background: #DCFCE7; text-decoration: none; padding: 0 .15rem; border-radius: .2rem; }
+  #diffHtml del { background: #FEE2E2; padding: 0 .15rem; border-radius: .2rem; }
+</style>
 
 {{-- ===== pdf.js（必须在你的脚本前加载） ===== --}}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -166,6 +196,9 @@
   const rubricRef = $('rubricRef');
   const btnSaveSnapshot = $('btnSaveSnapshot'), btnClearHistory = $('btnClearHistory'), historyList = $('historyList');
 
+  // ✅ 新增：标注 DOM
+  const annotCard = $('annotCard'), origTextEl = $('origText'), corrTextEl = $('corrText'), diffHtmlEl = $('diffHtml');
+
   // ===== State =====
   let selectedFile = null, isPdf = false, compressedDataURL = null;
   let history = [];
@@ -176,7 +209,7 @@ SPM Writing
 
 Part 1 — Assessment scale（5/3/1/0）：
 5 分：内容完全相关、读者充分获知；能用任务体裁传达直白想法；有简单连接词/少量衔接手段；基础词汇与简单语法控制良好，虽有错但不影响理解。
-3 分：轻微跑题/遗漏；整体能被告知；用简单方式表达简单想法；主要靠高频连接词；基础词汇/简单语法有时出错并影响理解。
+3 分：轻微跑题/遗漏；整体能被告知；用简单方式表达简单想法；主要靠高频连接词；基础词汇与简单语法有时出错并影响理解。
 1 分：可能误解任务；读者仅被最低限度告知；多为短小片段，衔接弱；词汇以孤立词/短语为主；少量简单语法且控制有限。0 分：内容完全不相关。
 
 Part 2 — Assessment scale：
@@ -205,7 +238,6 @@ Part 2：
   renderHistory();
 
   // ===== PDF -> Long Image =====
-  // 将 PDF 前 maxPages 页按 scale 渲成画布并纵向拼接，输出 dataURL（jpeg）
   async function pdfToLongImage(file, { maxPages = 3, scale = 1.6, quality = 0.9 } = {}) {
     const arrayBuf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
@@ -224,7 +256,6 @@ Part 2：
       pageCanvases.push(canvas);
     }
 
-    // 纵向拼接
     const totalHeight = pageCanvases.reduce((sum, c) => sum + c.height, 0);
     const maxWidth = Math.max(...pageCanvases.map(c => c.width));
     const out = document.createElement("canvas");
@@ -248,8 +279,7 @@ Part 2：
 
   function humanSize(bytes){
     const units=['B','KB','MB','GB']; let i=0, num=bytes||0;
-    while(num>=1024 && i<units.length-1){ num/=1024; i++;
-    }
+    while(num>=1024 && i<units.length-1){ num/=1024; i++; }
     return `${num.toFixed(1)} ${units[i]}`;
   }
 
@@ -269,7 +299,6 @@ Part 2：
     $('previewMeta').textContent = `File: ${file.name} · Size: ${humanSize(file.size)}`;
 
     if(isPdf){
-      // —— 前端把 PDF 渲成一张长图，后续按图片提交流程走 ——
       previewPdf.classList.add('hidden');
       previewImg.classList.remove('hidden');
 
@@ -277,9 +306,8 @@ Part 2：
         const longImageDataURL = await pdfToLongImage(file, { maxPages: 3, scale: 1.6, quality: 0.9 });
         previewImg.src = longImageDataURL;
 
-        // 让后续提交流程按“图片上传”处理
         compressedDataURL = longImageDataURL;
-        isPdf = false; // 重要：标记成非 PDF，从而走图片分支
+        isPdf = false;
         selectedFile = new File(
           [dataURLtoBlob(longImageDataURL)],
           (file.name.replace(/\.pdf$/i, '') || 'document') + '.jpg',
@@ -297,7 +325,6 @@ Part 2：
       return;
     }
 
-    // 图片：正常压缩预览
     const reader = new FileReader();
     reader.onload = async (ev)=>{
       const dataURL = ev.target.result;
@@ -342,10 +369,7 @@ Part 2：
 
       if(selectedFile){
         if(isPdf){
-          // 理论上不会走到这，因为 PDF 已经在前端转成了图片并把 isPdf=false
-          // 加个兜底：直接上传原 PDF，也能被后端处理（若服务器装了 Imagick/PdfParser）
           fd.append('file', selectedFile, selectedFile.name);
-          // fd.append('max_pages', '3');
         }else{
           if(!compressedDataURL) throw new Error('Image not ready yet.');
           const blob = dataURLtoBlob(compressedDataURL);
@@ -361,21 +385,28 @@ Part 2：
       const json = await res.json();
       if(!res.ok || !json.ok) throw new Error(json.error || 'Failed');
 
+      const original = json.extracted || '';
+      const corrected = json.corrected || original;
+
       // 写入编辑器
-      const corrected = json.corrected || json.extracted || '';
       essayText.value = corrected;
 
-      // 保存到 localStorage
+      // 渲染评分卡
+      directStatus.textContent = '✅ Done.';
+
+      // ✅ 渲染“原文标注修改”
+      renderAnnotations(original, corrected);
+
+      // 保存历史
       pushHistory({
         time: new Date().toLocaleString(),
         title: titleEl.value || '',
         rubric: rubricEl.value || '',
-        extracted: json.extracted || '',
+        extracted: original,
         corrected: corrected,
         explanations: Array.isArray(json.explanations) ? json.explanations : []
       });
 
-      directStatus.textContent = '✅ Done.';
     }catch(err){
       console.error(err);
       directStatus.textContent = '❌ Failed. Please check /api/essay/direct-correct.';
@@ -424,6 +455,75 @@ Part 2：
     });
   }
 
+  // ===== ✅ 原文标注渲染 =====
+  function renderAnnotations(original, corrected){
+    origTextEl.textContent = original || '-';
+    corrTextEl.textContent = corrected || '-';
+    const diffHtml = makeAnnotatedDiff(original || '', corrected || '');
+    diffHtmlEl.innerHTML = diffHtml;
+    annotCard.classList.remove('hidden');
+  }
+
+  // 词级 LCS 比对：输出含 <ins>/<del> 的 HTML
+  function makeAnnotatedDiff(a, b){
+    const at = tokenize(a);
+    const bt = tokenize(b);
+    const lcs = buildLCS(at, bt);
+
+    let i=0, j=0, html='';
+    for (const [ti, tj] of lcs){
+      // 删除的段
+      while(i < ti){
+        html += `<del>${escapeHTML(at[i])}</del>`;
+        i++;
+      }
+      // 新增的段
+      while(j < tj){
+        html += `<ins>${escapeHTML(bt[j])}</ins>`;
+        j++;
+      }
+      // 公共 token
+      if (ti < at.length && tj < bt.length){
+        html += escapeHTML(at[ti]);
+        i = ti + 1;
+        j = tj + 1;
+      }
+    }
+    // 尾部残留
+    while(i < at.length){ html += `<del>${escapeHTML(at[i++])}</del>`; }
+    while(j < bt.length){ html += `<ins>${escapeHTML(bt[j++])}</ins>`; }
+    return html;
+  }
+
+  // 把文本拆成“词/空白/标点”token，保留空白用于原样重排
+  function tokenize(s){
+    // 单词、数字、撇号词 + 多空白 + 单字符标点
+    const re = /[A-Za-z0-9’'’-]+|\s+|[^\sA-Za-z0-9]/g;
+    const out = [];
+    let m;
+    while((m = re.exec(s))){ out.push(m[0]); }
+    return out.length ? out : [s];
+  }
+
+  // LCS 返回一列 [i,j] 对，表示公共 token 的匹配索引序列
+  function buildLCS(a, b){
+    const n=a.length, m=b.length;
+    const dp = Array.from({length:n+1},()=>Array(m+1).fill(0));
+    for(let i=n-1;i>=0;i--){
+      for(let j=m-1;j>=0;j--){
+        dp[i][j] = (a[i]===b[j]) ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
+      }
+    }
+    const path=[];
+    let i=0, j=0;
+    while(i<n && j<m){
+      if(a[i]===b[j]){ path.push([i,j]); i++; j++; }
+      else if(dp[i+1][j] >= dp[i][j+1]) i++;
+      else j++;
+    }
+    return path;
+  }
+
   // ===== Export DOCX =====
   btnExportDocx.addEventListener('click', async ()=>{
     const corrected = (essayText.value || '').trim();
@@ -434,9 +534,9 @@ Part 2：
         headers:{ 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: $('title').value || 'Essay Report',
-          extracted: '',          // 如需可写入最近 extracted
+          extracted: origTextEl?.textContent || '',   // 导出包含原文
           corrected: corrected,
-          explanations: []        // 如需可写入最近 explanations
+          explanations: []        
         })
       });
       const json = await res.json();
@@ -490,6 +590,8 @@ Part 2：
         titleEl.value = h.title || '';
         rubricEl.value = h.rubric || 'SPM_P1';
         essayText.value = h.corrected || h.extracted || '';
+        // 载入历史时也即时生成标注视图
+        renderAnnotations(h.extracted || '', h.corrected || '');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       };
     });
@@ -503,18 +605,18 @@ Part 2：
     });
   }
 
-  btnSaveSnapshot.addEventListener('click', ()=>{
+  $('btnSaveSnapshot').addEventListener('click', ()=>{
     pushHistory({
       time: new Date().toLocaleString(),
       title: titleEl.value || '',
       rubric: rubricEl.value || '',
-      extracted: '',
+      extracted: origTextEl?.textContent || '',
       corrected: (essayText.value||'').trim(),
       explanations: []
     });
   });
 
-  btnClearHistory.addEventListener('click', ()=>{
+  $('btnClearHistory').addEventListener('click', ()=>{
     if(confirm('Clear all local history?')){
       history = [];
       localStorage.removeItem('essayProHistory');
