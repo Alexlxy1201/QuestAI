@@ -9,9 +9,9 @@
 
     {{-- Header --}}
     <div class="flex items-center justify-between gap-4 mb-4">
-      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent"> 
-        ✍️ Essay Pro — AI Grader 
-      </h1> 
+      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
+        ✍️ Essay Pro — AI Grader
+      </h1>
       <div class="flex items-center gap-2">
         <button id="btnExportDocx" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition">
           ⬇️ Export (.docx)
@@ -49,8 +49,9 @@
 
         <div class="mt-4">
           <label class="block text-sm font-medium text-gray-700 mb-1">Upload / Take Photo (Image/PDF)</label>
-          <input type="file" id="fileInput" accept="image/*,application/pdf" class="hidden">
-          <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden">
+          {{-- ✅ 多图支持：multiple --}}
+          <input type="file" id="fileInput" accept="image/*,application/pdf" multiple class="hidden">
+          <input type="file" id="cameraInput" accept="image/*" capture="environment" multiple class="hidden">
 
           <div class="flex gap-3">
             <button id="cameraButton" class="px-4 py-2 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700">
@@ -62,9 +63,13 @@
           </div>
 
           <div id="previewWrap" class="mt-3 hidden">
+            {{-- 总预览（拼接后的长图） --}}
             <img id="previewImg" class="max-h-56 rounded-xl shadow border border-gray-100 mx-auto hidden" alt="preview">
             <div id="previewPdf" class="text-sm text-gray-600 mt-2 hidden"></div>
             <div id="previewMeta" class="text-xs text-gray-500 mt-1"></div>
+
+            {{-- 小缩略图网格（多图时展示） --}}
+            <div id="thumbGrid" class="mt-2 grid grid-cols-6 gap-2"></div>
           </div>
 
           {{-- ✅ Single-step: Extract + Grade --}}
@@ -162,17 +167,25 @@
       </div>
     </div>
 
-    {{-- History (localStorage only) --}}
-    <div class="mt-8">
-      <div class="flex items-center justify-between mb-2">
+    {{-- 📜 历史记录（整体折叠，默认收起） --}}
+    <details class="mt-8 group">
+      <summary class="flex items-center justify-between cursor-pointer select-none">
         <h2 class="text-xl font-bold text-indigo-700">📜 History (Local Only)</h2>
+        <span class="text-sm text-gray-500 group-open:hidden">Click to expand</span>
+        <span class="text-sm text-gray-500 hidden group-open:inline">Click to collapse</span>
+      </summary>
+
+      <div class="flex items-center justify-between mb-2 mt-3">
         <div class="flex gap-3">
           <button id="btnSaveSnapshot" class="text-sm text-blue-600 underline">Save snapshot</button>
           <button id="btnClearHistory" class="text-sm text-red-600 underline">Clear</button>
         </div>
+        {{-- 限高滚动，避免页面过长 --}}
+        <span id="histCount" class="text-xs text-gray-400"></span>
       </div>
-      <div id="historyList" class="space-y-3"></div>
-    </div>
+
+      <div id="historyList" class="space-y-3 max-h-80 overflow-y-auto pr-1"></div>
+    </details>
 
   </div>
 </div>
@@ -207,14 +220,11 @@
   // ===== Server URL helpers (handles Railway + local) =====
   const APP_ABS = "{{ rtrim(config('app.url') ?? url('/'), '/') }}";
   const ORIGIN = (location && location.origin) ? location.origin : APP_ABS;
-  // Prioritize absolute /api endpoints, then route() helpers (rendered server-side)
   const API_EXPORT_DOCX = [
     ORIGIN + "/api/essay/export-docx",
     APP_ABS + "/api/essay/export-docx",
-    "{{ route('api.essay.exportDocx', [], false) }}", // relative
+    "{{ route('api.essay.exportDocx', [], false) }}",
   ].filter(Boolean);
-
-  // Optional smoke-test endpoint if defined
   const API_EXPORT_SMOKE = [
     ORIGIN + "/api/essay/export-docx-test",
     APP_ABS + "/api/essay/export-docx-test",
@@ -225,18 +235,22 @@
   const fileInput = $('fileInput'), cameraInput = $('cameraInput');
   const chooseButton = $('chooseButton'), cameraButton = $('cameraButton');
   const previewWrap = $('previewWrap'), previewImg = $('previewImg'), previewPdf = $('previewPdf'), previewMeta = $('previewMeta');
+  const thumbGrid = $('thumbGrid');
   const btnRun = $('btnRun'), runStatus = $('runStatus');
   const essayText = $('essayText'), titleEl = $('title'), rubricEl = $('rubric');
   const resultCard = $('resultCard'), scContent = $('scContent'), scComm = $('scComm'), scOrg = $('scOrg'), scLang = $('scLang'), scTotal = $('scTotal'), badgeRubric = $('badgeRubric');
   const suggestions = $('suggestions'), rationaleList = $('rationaleList'), btnExportDocx = $('btnExportDocx');
   const rubricRef = $('rubricRef');
-  const btnSaveSnapshot = $('btnSaveSnapshot'), btnClearHistory = $('btnClearHistory'), historyList = $('historyList');
+  const btnSaveSnapshot = $('btnSaveSnapshot'), btnClearHistory = $('btnClearHistory'), historyList = $('historyList'), histCount = $('histCount');
   const annotCard = $('annotCard'), origTextEl = $('origText'), corrTextEl = $('corrText'), diffHtmlEl = $('diffHtml');
   const overlay = $('overlay');
 
-  let selectedFile = null, isPdf = false, compressedDataURL = null;
-  let history = [];
+  // 多图：内部状态
+  let selectedFiles = [];   // File[]
+  let stitchedDataURL = null; // 拼接后的长图 dataURL（或 PDF 渲染后得到）
+  let isPdfBundle = false;
 
+  let history = [];
   // ===== Default rubric text (EN) =====
   rubricRef.value = `SPM Writing
 
@@ -269,13 +283,12 @@ Part 2:
   // ===== File controls =====
   chooseButton.addEventListener('click', () => fileInput.click());
   cameraButton.addEventListener('click', () => cameraInput.click());
-  fileInput.addEventListener('change', handleFile);
-  cameraInput.addEventListener('change', handleFile);
+  fileInput.addEventListener('change', handleFiles);
+  cameraInput.addEventListener('change', handleFiles);
 
   async function pdfToLongImage(file, { maxPages = 3, scale = 1.6, quality = 0.9 } = {}) {
     const arrayBuf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
-
     const pageCanvases = [];
     const count = Math.min(pdf.numPages, maxPages);
 
@@ -307,47 +320,123 @@ Part 2:
 
   function humanSize(bytes){ const u=['B','KB','MB','GB']; let i=0,n=bytes||0; while(n>=1024&&i<u.length-1){n/=1024;i++;} return `${n.toFixed(1)} ${u[i]}`; }
 
-  async function handleFile(e){
-    const file = e.target.files?.[0];
-    if(!file) return;
-    selectedFile = file;
-    isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  // ✅ 多图处理：支持 多张 image 或 单个 PDF（不允许多 PDF 或 PDF+图混选）
+  async function handleFiles(e){
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
 
-    const limit = isPdf ? 20*1024*1024 : 10*1024*1024;
-    if(file.size > limit){ alert(`File exceeds ${limit/1024/1024} MB`); selectedFile = null; return; }
+    const pdfs = files.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+    const imgs = files.filter(f => f.type.startsWith('image/'));
 
-    $('previewWrap').classList.remove('hidden');
-    $('previewMeta').textContent = `File: ${file.name} · Size: ${humanSize(file.size)}`;
+    // 规则：要么 1 个 PDF；要么 N 张图片；否则提示
+    if (pdfs.length > 1 || (pdfs.length === 1 && imgs.length > 0)) {
+      alert('Please choose either a single PDF or multiple images (not both).');
+      return;
+    }
 
-    if(isPdf){
-      previewPdf.classList.add('hidden');
-      previewImg.classList.remove('hidden');
+    // 尺寸限制（与原逻辑一致/更宽松）
+    const totalSize = files.reduce((s,f)=>s+f.size,0);
+    const limit = pdfs.length ? 20*1024*1024 : 25*1024*1024; // 多图给到 25MB 总和
+    if (totalSize > limit) {
+      alert(`Selected files exceed ${limit/1024/1024} MB in total.`);
+      return;
+    }
+
+    selectedFiles = files;
+    previewWrap.classList.remove('hidden');
+    thumbGrid.innerHTML = '';
+    previewMeta.textContent = `Files: ${files.length} · Total: ${humanSize(totalSize)}`;
+
+    if (pdfs.length === 1) {
+      // 单 PDF → 渲染成长图
+      isPdfBundle = true;
       try {
-        const longImageDataURL = await pdfToLongImage(file, { maxPages: 3, scale: 1.6, quality: 0.9 });
+        const longImageDataURL = await pdfToLongImage(pdfs[0], { maxPages: 3, scale: 1.6, quality: 0.9 });
+        stitchedDataURL = longImageDataURL;
         previewImg.src = longImageDataURL;
-        compressedDataURL = longImageDataURL;
-        isPdf = false;
-        selectedFile = new File([dataURLtoBlob(longImageDataURL)], (file.name.replace(/\.pdf$/i, '') || 'document') + '.jpg', { type: 'image/jpeg' });
-        $('previewMeta').textContent += ` · Rendered as long image (~${Math.round((compressedDataURL.length * 3 / 4)/1024)} KB)`;
+        previewImg.classList.remove('hidden');
+        previewPdf.classList.add('hidden');
+        // 构建一个 File 给后端
+        const fileName = (pdfs[0].name.replace(/\.pdf$/i, '') || 'document') + '.jpg';
+        selectedFiles = [new File([dataURLtoBlob(longImageDataURL)], fileName, { type: 'image/jpeg' })];
+        previewMeta.textContent += ` · Rendered as long image (~${Math.round((longImageDataURL.length * 3 / 4)/1024)} KB)`;
       } catch (err) {
         console.error(err);
         previewImg.classList.add('hidden');
         previewPdf.classList.remove('hidden');
         previewPdf.textContent = 'Failed to render PDF in browser.';
-        compressedDataURL = null;
+        stitchedDataURL = null;
       }
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = async (ev)=>{
-      const dataURL = ev.target.result;
-      previewPdf.classList.add('hidden');
+    // 多张图片：压缩后按顺序拼成长图 + 缩略图网格
+    isPdfBundle = false;
+    const ordered = imgs.sort((a,b) => (a.name||'').localeCompare(b.name||'', undefined, { numeric:true, sensitivity:'base' }));
+
+    // 先生成缩略图预览
+    for (const imgFile of ordered) {
+      const url = URL.createObjectURL(imgFile);
+      const im = document.createElement('img');
+      im.src = url;
+      im.className = 'w-full h-16 object-cover rounded border';
+      thumbGrid.appendChild(im);
+      // 撤销 URL 将在拼接完成后统一处理
+    }
+
+    try {
+      const pieces = [];
+      for (const f of ordered) {
+        const dataURL = await readAsDataURL(f);
+        const compressed = await compressImage(dataURL, 1000, 0.9).catch(()=>dataURL);
+        const img = await loadImage(compressed);
+        pieces.push({ img, w: img.width, h: img.height });
+      }
+
+      const width = Math.max(...pieces.map(p => p.w));
+      const totalHeight = pieces.reduce((s,p)=>s + Math.round(p.h * (width / p.w)), 0);
+      const out = document.createElement('canvas');
+      out.width = width;
+      out.height = totalHeight;
+      const ctx = out.getContext('2d');
+      let y = 0;
+      for (const p of pieces) {
+        const nh = Math.round(p.h * (width / p.w));
+        ctx.drawImage(p.img, 0, y, width, nh);
+        y += nh;
+      }
+      stitchedDataURL = out.toDataURL('image/jpeg', 0.9);
+
+      previewImg.src = stitchedDataURL;
       previewImg.classList.remove('hidden');
-      previewImg.src = dataURL;
-      compressedDataURL = await compressImage(dataURL, 1000, 0.9).catch(()=>dataURL);
-    };
-    reader.readAsDataURL(file);
+      previewPdf.classList.add('hidden');
+
+      // 作为单一文件提交给后端
+      selectedFiles = [new File([dataURLtoBlob(stitchedDataURL)], `images_bundle_${Date.now()}.jpg`, { type: 'image/jpeg' })];
+      previewMeta.textContent += ` · Stitched as long image (~${Math.round((stitchedDataURL.length * 3 / 4)/1024)} KB)`;
+    } finally {
+      // 释放临时 URL
+      Array.from(thumbGrid.querySelectorAll('img')).forEach(im => {
+        try { URL.revokeObjectURL(im.src); } catch(_) {}
+      });
+    }
+  }
+
+  function readAsDataURL(file){
+    return new Promise((resolve,reject)=>{
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = reject;
+      fr.readAsDataURL(file);
+    });
+  }
+  function loadImage(dataURL){
+    return new Promise((resolve,reject)=>{
+      const img = new Image();
+      img.onload = ()=> resolve(img);
+      img.onerror = reject;
+      img.src = dataURL;
+    });
   }
 
   function compressImage(dataURL, maxEdge=1000, quality=0.9){
@@ -411,20 +500,22 @@ Part 2:
     const fd = new FormData();
     fd.append('title', titleEl.value || '');
     const rawText = (essayText.value || '').trim();
-    if(selectedFile){
-      if(isPdf){ fd.append('file', selectedFile, selectedFile.name); }
-      else{
-        if(!compressedDataURL) throw new Error('Image not ready yet.');
-        const blob = dataURLtoBlob(compressedDataURL);
-        fd.append('file', blob, (selectedFile.name||'image')+'.jpg');
-      }
-    }else if(rawText){ fd.append('text', rawText); }
-    else{ throw new Error('Provide a file or text.'); }
+
+    if (selectedFiles.length > 0) {
+      // 发送单一“拼接后”的文件（或 PDF 渲染后的图）
+      const theFile = selectedFiles[0];
+      fd.append('file', theFile, theFile.name);
+    } else if (rawText) {
+      fd.append('text', rawText);
+    } else {
+      throw new Error('Provide a file or text.');
+    }
 
     const res = await fetch(ORIGIN + '/api/essay/direct-correct', { method:'POST', body:fd });
     const json = await res.json().catch(()=>({}));
     if(!res.ok || !json.ok){ throw new Error(json.error || 'Extract/Correct failed.'); }
     return { original: json.extracted || '', corrected: json.corrected || json.extracted || '', dc_explanations: json.explanations || [] };
+    // （如果后端未来支持多文件字段，也可在此处循环 append('files[]', file) 发送原始多图）
   }
 
   // Grade
@@ -506,7 +597,7 @@ Part 2:
   function buildLCS(a,b){ const n=a.length,m=b.length,dp=Array.from({length:n+1},()=>Array(m+1).fill(0)); for(let i=n-1;i>=0;i--){ for(let j=m-1;j>=0;j--){ dp[i][j]=(a[i]===b[j])?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]); } } const path=[]; let i=0,j=0; while(i<n&&j<m){ if(a[i]===b[j]){ path.push([i,j]); i++; j++; } else if(dp[i+1][j]>=dp[i][j+1]) i++; else j++; } return path; }
   function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
-  // ===== DOCX Export (Railway-safe; absolute URLs; content-type heuristics) =====
+  // ===== DOCX Export =====
   document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('btnExportDocx');
     if (!btn) return;
@@ -525,7 +616,6 @@ Part 2:
         if (!extracted) extracted = editorText;
         if (!corrected) { alert('Nothing to export (editor is empty).'); return; }
 
-        // aggregate explanations (DOM + last grade payload)
         const fromDom = Array.from(document.querySelectorAll('#rationaleList li')).map(li => li.textContent);
         const last = window.__lastGrade || {};
         const explanations = [
@@ -545,7 +635,6 @@ Part 2:
 
         const tryUrls = [
           ...API_EXPORT_DOCX,
-          // legacy direct (if you added a non-API fallback)
           ORIGIN + '/essay/export-docx-direct',
           APP_ABS + '/essay/export-docx-direct',
         ];
@@ -563,7 +652,6 @@ Part 2:
               cache: 'no-store',
             });
 
-            // res.blob() must come BEFORE checking content-type text decoding path
             const blob = await res.blob();
             const ct = (res.headers.get('content-type') || '').toLowerCase();
             const cd = res.headers.get('content-disposition') || '';
@@ -587,7 +675,6 @@ Part 2:
               console.log('[Export] success via:', u);
               return;
             } else {
-              // try to peek first 300 chars of text to log HTML/JSON errors
               try {
                 const text = await blob.text();
                 console.warn('[Export] Not DOCX:', { u, status: res.status, ct, cd, head: text.slice(0, 300) });
@@ -600,7 +687,7 @@ Part 2:
           }
         }
 
-        alert('❌ Export failed: server did not return DOCX (check Network/Console logs and any Railway rewrite rules).');
+        alert('❌ Export failed: server did not return DOCX (check Network/Console logs).');
       } finally {
         btn.disabled = false;
         btn.textContent = oldLabel;
@@ -617,6 +704,7 @@ Part 2:
   }
 
   function renderHistory(){
+    histCount.textContent = `${history.length} record(s)`;
     historyList.innerHTML = history.map((h,idx)=>`
       <details class="bg-gray-50 rounded-lg p-3 border">
         <summary class="cursor-pointer font-semibold text-gray-800 truncate">
@@ -665,7 +753,7 @@ Part 2:
       time: new Date().toLocaleString(),
       title: titleEl.value || '',
       rubric: rubricEl.value || '',
-      extracted: origTextEl?.textContent || '',
+      extracted: (origTextEl?.textContent || ''),
       corrected: (essayText.value||'').trim(),
       explanations: Array.from(document.querySelectorAll('#rationaleList li')).map(li=>li.textContent).slice(0,10)
     });
