@@ -1,770 +1,375 @@
 {{-- resources/views/essay-pro.blade.php --}}
 @extends('layouts.app')
 
-@section('title', '✍️ Essay Pro — AI Grader')
+@section('title', '✍️ Essay Pro — 3-Button Flow (English UI)')
 
 @section('content')
 <div class="min-h-[70vh] flex flex-col items-center justify-center p-4">
-  <div class="bg-white shadow-2xl rounded-2xl p-6 w-full max-w-5xl text-left transition-all duration-300">
+  <div class="bg-white shadow-2xl rounded-2xl p-6 w-full max-w-5xl text-left transition-all duration-300 overflow-x-hidden">
 
     {{-- Header --}}
     <div class="flex items-center justify-between gap-4 mb-4">
-      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
-        ✍️ Essay Pro — AI Grader
+      <h1 class="text-2xl md:text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
+        ✍️ Essay Pro — OCR → Edit → Grade
       </h1>
-      <div class="flex items-center gap-2">
-        <button id="btnExportDocx" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition">
-          ⬇️ Export (.docx)
-        </button>
-        <a href="{{ route('home') ?? url('/') }}" class="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition">Back</a>
-      </div>
+      <a href="{{ route('home') ?? url('/') }}" class="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition">Back</a>
     </div>
 
-    <p class="text-gray-600 mb-4">
-      Upload image/PDF → AI extracts & grades in one go. <small>(No server storage)</small>
-    </p>
-
+    {{-- Basics --}}
     <div class="grid md:grid-cols-2 gap-6">
-      {{-- Left --}}
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Essay Title</label>
-        <input id="title" type="text" placeholder="e.g., The Importance of Reading"
+        <input id="title" type="text" placeholder="OCR or type a title"
                class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-
-        <div class="mt-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">Rubric</label>
-          <select id="rubric" class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-            <optgroup label="SPM">
-              <option value="SPM_P1">SPM — Part 1</option>
-              <option value="SPM_P2">SPM — Part 2</option>
-              <option value="SPM_P3">SPM — Part 3</option>
-            </optgroup>
-            <optgroup label="UASA">
-              <option value="UASA_P1">UASA — Part 1</option>
-              <option value="UASA_P2">UASA — Part 2</option>
-            </optgroup>
-          </select>
-          <p class="text-xs text-gray-400 mt-1">Scoring dimensions: Content · Communicative Achievement · Organisation · Language (0–5 each).</p>
-        </div>
-
-        <div class="mt-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">Upload / Take Photo (Image/PDF)</label>
-          {{-- ✅ 多图支持：multiple --}}
-          <input type="file" id="fileInput" accept="image/*,application/pdf" multiple class="hidden">
-          <input type="file" id="cameraInput" accept="image/*" capture="environment" multiple class="hidden">
-
-          <div class="flex gap-3">
-            <button id="cameraButton" class="px-4 py-2 rounded-xl bg-green-600 text-white font-semibold hover:bg-green-700">
-              📷 Take Photo
-            </button>
-            <button id="chooseButton" class="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700">
-              📁 Choose File (Image/PDF)
-            </button>
-          </div>
-
-          <div id="previewWrap" class="mt-3 hidden">
-            {{-- 总预览（拼接后的长图） --}}
-            <img id="previewImg" class="max-h-56 rounded-xl shadow border border-gray-100 mx-auto hidden" alt="preview">
-            <div id="previewPdf" class="text-sm text-gray-600 mt-2 hidden"></div>
-            <div id="previewMeta" class="text-xs text-gray-500 mt-1"></div>
-
-            {{-- 小缩略图网格（多图时展示） --}}
-            <div id="thumbGrid" class="mt-2 grid grid-cols-6 gap-2"></div>
-          </div>
-
-          {{-- ✅ Single-step: Extract + Grade --}}
-          <div class="mt-4 flex items-center gap-3">
-            <button id="btnRun" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">
-              🧠 Extract + Grade (AI)
-            </button>
-            <span id="runStatus" class="text-sm text-gray-500"></span>
-          </div>
-        </div>
       </div>
-
-      {{-- Right --}}
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Essay Text (editable)</label>
-        <textarea id="essayText" rows="14" placeholder="You may also paste/edit text here…"
-                  class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Rubric</label>
+        <select id="rubric" class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+          <optgroup label="SPM">
+            <option value="SPM_P1">SPM — Part 1</option>
+            <option value="SPM_P2">SPM — Part 2</option>
+            <option value="SPM_P3">SPM — Part 3</option>
+          </optgroup>
+          <optgroup label="UASA">
+            <option value="UASA_P1">UASA — Part 1</option>
+            <option value="UASA_P2">UASA — Part 2</option>
+          </optgroup>
+        </select>
       </div>
     </div>
 
-    {{-- Rubric reference (editable, local only) --}}
-    <div class="mt-6">
-      <label class="block text-sm font-medium text-gray-700 mb-1">Rubric Reference (editable)</label>
-      <textarea id="rubricRef" rows="8" class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
-      <p class="text-xs text-gray-400 mt-1">You can modify this text; it’s for reference only and won’t be sent to the backend.</p>
+    {{-- ONLY THREE MAIN BUTTONS --}}
+    <div class="mt-6 grid sm:grid-cols-3 gap-3">
+      <button id="btnTitleOCR" class="px-4 py-3 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-700">
+        1) Extract Title (camera/file/PDF)
+      </button>
+      <button id="btnAnswerOCR" class="px-4 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700">
+        2) Extract Student Answer & Edit
+      </button>
+      <button id="btnGrade" class="px-4 py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700" disabled>
+        3) Grade (use edited answer)
+      </button>
     </div>
 
-    {{-- Score Result --}}
+    {{-- Hidden file inputs (not counted as buttons) --}}
+    <input type="file" id="inpTitleFile"  accept="image/*,application/pdf" capture="environment" class="hidden">
+    <input type="file" id="inpAnswerFiles" accept="image/*,application/pdf" multiple capture="environment" class="hidden">
+
+    {{-- Final Answer (shows saved edited text; editing itself happens in modal) --}}
+    <div class="mt-6">
+      <label class="block text-sm font-medium text-gray-700 mb-1">Student Answer (saved result)</label>
+      <textarea id="answerText" rows="8" placeholder="After you finish editing in the popup, the text will appear here."
+                class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+    </div>
+
+    {{-- Result --}}
     <div class="bg-white rounded-2xl border mt-6 p-4 hidden" id="resultCard">
       <div class="flex items-center justify-between gap-4">
-        <h2 class="text-xl font-bold">AI Score</h2>
+        <h2 class="text-xl font-bold">AI Scoring Result</h2>
         <span id="badgeRubric" class="text-xs px-2 py-1 rounded-full bg-indigo-50 text-indigo-700">-</span>
       </div>
-
       <div class="grid md:grid-cols-5 gap-4 mt-3">
-        <div class="p-3 rounded-xl bg-indigo-50">
+        <div class="p-3 rounded-xl bg-indigo-50 text-center">
           <div class="text-xs uppercase text-gray-500">Content</div>
           <div id="scContent" class="text-2xl font-extrabold">-</div>
           <div class="text-xs text-gray-400">0–5</div>
         </div>
-        <div class="p-3 rounded-xl bg-indigo-50">
+        <div class="p-3 rounded-xl bg-indigo-50 text-center">
           <div class="text-xs uppercase text-gray-500">Communicative</div>
           <div id="scComm" class="text-2xl font-extrabold">-</div>
           <div class="text-xs text-gray-400">0–5</div>
         </div>
-        <div class="p-3 rounded-xl bg-indigo-50">
+        <div class="p-3 rounded-xl bg-indigo-50 text-center">
           <div class="text-xs uppercase text-gray-500">Organisation</div>
           <div id="scOrg" class="text-2xl font-extrabold">-</div>
           <div class="text-xs text-gray-400">0–5</div>
         </div>
-        <div class="p-3 rounded-xl bg-indigo-50">
+        <div class="p-3 rounded-xl bg-indigo-50 text-center">
           <div class="text-xs uppercase text-gray-500">Language</div>
           <div id="scLang" class="text-2xl font-extrabold">-</div>
           <div class="text-xs text-gray-400">0–5</div>
         </div>
-        <div class="p-3 rounded-xl bg-emerald-50">
+        <div class="p-3 rounded-xl bg-emerald-50 text-center">
           <div class="text-xs uppercase text-gray-500">Total</div>
           <div id="scTotal" class="text-2xl font-extrabold">-</div>
           <div class="text-xs text-gray-400">/20</div>
         </div>
       </div>
 
-      {{-- Criterion explanations --}}
       <div class="mt-4 grid md:grid-cols-2 gap-4" id="rationaleWrap">
         <div class="p-3 rounded-xl bg-gray-50">
-          <div class="text-xs uppercase text-gray-500 mb-1">Criterion Explanations</div>
+          <div class="text-xs uppercase text-gray-500 mb-1">Rationales</div>
           <ul id="rationaleList" class="list-disc pl-6 space-y-1 text-gray-700"></ul>
         </div>
         <div class="p-3 rounded-xl bg-gray-50">
-          <div class="text-xs uppercase text-gray-500 mb-1">Revision Suggestions</div>
+          <div class="text-xs uppercase text-gray-500 mb-1">Suggestions</div>
           <ul id="suggestions" class="list-disc pl-6 space-y-1 text-gray-700"></ul>
         </div>
       </div>
     </div>
-
-    {{-- ✅ Annotated Changes --}}
-    <div class="bg-white rounded-2xl border mt-6 p-4 hidden" id="annotCard">
-      <div class="flex items-center justify-between">
-        <h2 class="text-xl font-bold">Annotated Changes</h2>
-        <div class="text-xs text-gray-400">Legend: <ins class="annot-ins px-1 mx-1">added/replaced</ins> <del class="annot-del px-1 mx-1">removed</del></div>
-      </div>
-      <div class="grid md:grid-cols-2 gap-4 mt-3">
-        <div class="p-3 rounded-xl bg-gray-50">
-          <div class="text-xs uppercase text-gray-500 mb-1">Original</div>
-          <div id="origText" class="text-sm whitespace-pre-wrap break-words"></div>
-        </div>
-        <div class="p-3 rounded-xl bg-gray-50">
-          <div class="text-xs uppercase text-gray-500 mb-1">Corrected</div>
-          <div id="corrText" class="text-sm whitespace-pre-wrap break-words"></div>
-        </div>
-      </div>
-      <div class="mt-4">
-        <h3 class="text-base font-semibold">Inline Diff</h3>
-        <div id="diffHtml" class="prose prose-sm max-w-none leading-7 whitespace-pre-wrap break-words"></div>
-      </div>
-    </div>
-
-    {{-- 📜 历史记录（整体折叠，默认收起） --}}
-    <details class="mt-8 group">
-      <summary class="flex items-center justify-between cursor-pointer select-none">
-        <h2 class="text-xl font-bold text-indigo-700">📜 History (Local Only)</h2>
-        <span class="text-sm text-gray-500 group-open:hidden">Click to expand</span>
-        <span class="text-sm text-gray-500 hidden group-open:inline">Click to collapse</span>
-      </summary>
-
-      <div class="flex items-center justify-between mb-2 mt-3">
-        <div class="flex gap-3">
-          <button id="btnSaveSnapshot" class="text-sm text-blue-600 underline">Save snapshot</button>
-          <button id="btnClearHistory" class="text-sm text-red-600 underline">Clear</button>
-        </div>
-        {{-- 限高滚动，避免页面过长 --}}
-        <span id="histCount" class="text-xs text-gray-400"></span>
-      </div>
-
-      <div id="historyList" class="space-y-3 max-h-80 overflow-y-auto pr-1"></div>
-    </details>
 
   </div>
 </div>
 
 {{-- ===== Styles ===== --}}
 <style>
-  .annot-ins { background: #DCFCE7; border-radius: .25rem; text-decoration: none; }
-  .annot-del { background: #FEE2E2; border-radius: .25rem; text-decoration: line-through; }
-  #diffHtml ins { background: #DCFCE7; text-decoration: none; padding: 0 .15rem; border-radius: .2rem; }
-  #diffHtml del { background: #FEE2E2; padding: 0 .15rem; border-radius: .2rem; }
+  /* Keep layout stable when scrollbar appears (fixes left margin shift) */
+  html { scrollbar-gutter: stable both-edges; }
+  body { min-height: 100vh; overflow-y: scroll; }
+
+  /* Global overlay spinner */
   #overlay { position: fixed; inset: 0; background: rgba(255,255,255,.6); display: none; align-items: center; justify-content: center; z-index: 60; backdrop-filter: blur(2px); }
   #overlay.show { display: flex; }
+
+  /* Modal */
+  #modalBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; z-index: 70; }
+  #modalBackdrop.show { display: flex; }
 </style>
 
+{{-- Global overlay (spinner) --}}
 <div id="overlay">
   <div class="flex items-center gap-3 px-4 py-2 rounded-xl bg-white shadow">
     <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" opacity=".2"/>
       <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" stroke-width="4"/>
     </svg>
-    <span class="text-sm text-gray-700">Processing with AI…</span>
+    <span class="text-sm text-gray-700">Working…</span>
   </div>
 </div>
 
-{{-- In case your layout doesn’t inject this --}}
+{{-- Answer Edit Modal --}}
+<div id="modalBackdrop" aria-hidden="true">
+  <div class="bg-white rounded-2xl shadow-2xl w-[90vw] max-w-3xl p-4 md:p-6">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-lg font-semibold">Edit Extracted Answer</h3>
+      <button id="modalClose" class="px-3 py-1 rounded-lg bg-gray-100 hover:bg-gray-200">✕</button>
+    </div>
+    <p class="text-sm text-gray-500 mb-2">Please edit the OCR result below. Click <strong>Save</strong> to use this text for grading.</p>
+    <textarea id="modalAnswerText" rows="12" class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="OCR result will appear here..."></textarea>
+    <div class="mt-4 flex items-center justify-end gap-3">
+      <button id="modalCancel" class="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200">Cancel</button>
+      <button id="modalSave" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700">Save</button>
+    </div>
+  </div>
+</div>
+
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script>pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
-
 <script>
-  // ===== Server URL helpers (handles Railway + local) =====
-  const APP_ABS = "{{ rtrim(config('app.url') ?? url('/'), '/') }}";
-  const ORIGIN = (location && location.origin) ? location.origin : APP_ABS;
-  const API_EXPORT_DOCX = [
-    ORIGIN + "/api/essay/export-docx",
-    APP_ABS + "/api/essay/export-docx",
-    "{{ route('api.essay.exportDocx', [], false) }}",
-  ].filter(Boolean);
-  const API_EXPORT_SMOKE = [
-    ORIGIN + "/api/essay/export-docx-test",
-    APP_ABS + "/api/essay/export-docx-test",
-    "{{ url('/api/essay/export-docx-test') }}",
-  ].filter(Boolean);
+/* ========= Boot & Refs ========= */
+const APP_ABS = "{{ rtrim(config('app.url') ?? url('/'), '/') }}";
+const ORIGIN  = (location && location.origin) ? location.origin : APP_ABS;
+const CSRF    = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
-  const $ = (id) => document.getElementById(id);
-  const fileInput = $('fileInput'), cameraInput = $('cameraInput');
-  const chooseButton = $('chooseButton'), cameraButton = $('cameraButton');
-  const previewWrap = $('previewWrap'), previewImg = $('previewImg'), previewPdf = $('previewPdf'), previewMeta = $('previewMeta');
-  const thumbGrid = $('thumbGrid');
-  const btnRun = $('btnRun'), runStatus = $('runStatus');
-  const essayText = $('essayText'), titleEl = $('title'), rubricEl = $('rubric');
-  const resultCard = $('resultCard'), scContent = $('scContent'), scComm = $('scComm'), scOrg = $('scOrg'), scLang = $('scLang'), scTotal = $('scTotal'), badgeRubric = $('badgeRubric');
-  const suggestions = $('suggestions'), rationaleList = $('rationaleList'), btnExportDocx = $('btnExportDocx');
-  const rubricRef = $('rubricRef');
-  const btnSaveSnapshot = $('btnSaveSnapshot'), btnClearHistory = $('btnClearHistory'), historyList = $('historyList'), histCount = $('histCount');
-  const annotCard = $('annotCard'), origTextEl = $('origText'), corrTextEl = $('corrText'), diffHtmlEl = $('diffHtml');
-  const overlay = $('overlay');
+const $ = (id)=>document.getElementById(id);
 
-  // 多图：内部状态
-  let selectedFiles = [];   // File[]
-  let stitchedDataURL = null; // 拼接后的长图 dataURL（或 PDF 渲染后得到）
-  let isPdfBundle = false;
+const titleEl   = $('title');
+const rubricEl  = $('rubric');
+const answerEl  = $('answerText');
 
-  let history = [];
-  // ===== Default rubric text (EN) =====
-  rubricRef.value = `SPM Writing
+const btnTitleOCR  = $('btnTitleOCR');
+const btnAnswerOCR = $('btnAnswerOCR');
+const btnGrade     = $('btnGrade');
 
-Part 1 — Assessment scale (5/3/1/0):
-5: Content fully relevant; reader well informed; conveys straightforward ideas using an appropriate text type; uses simple linkers/few cohesive devices; basic vocabulary and simple grammar well controlled; errors do not impede understanding.
-3: Slight irrelevance/omission; reader generally informed; simple ideas expressed simply; relies on common linkers; basic vocabulary and simple grammar sometimes inaccurate and may affect understanding.
-1: Task may be misunderstood; reader minimally informed; mostly short, disconnected sentences; weak cohesion; vocabulary mainly isolated words/phrases; limited control of simple grammar. 0: Completely irrelevant.
+const inpTitleFile   = $('inpTitleFile');
+const inpAnswerFiles = $('inpAnswerFiles');
 
-Part 2 — Assessment scale:
-5: Content fully relevant; reader well informed; appropriate text type and engaging; coherent organization with varied cohesion; fairly wide everyday vocabulary (occasional misuse of less common words); good control of simple and some complex grammar; errors do not hinder communication.
-3: Slight irrelevance/omission; reader generally informed; text type used adequately; mainly simple linkers with limited cohesion; fair control of vocabulary and grammar though errors occur. 0–1: Same as Part 1 low bands.
+const resultCard     = $('resultCard');
+const badgeRubric    = $('badgeRubric');
+const scContent      = $('scContent');
+const scComm         = $('scComm');
+const scOrg          = $('scOrg');
+const scLang         = $('scLang');
+const scTotal        = $('scTotal');
+const rationaleList  = $('rationaleList');
+const suggestions    = $('suggestions');
 
-Part 3 — Assessment scale:
-5: Content fully relevant; purpose achieved; well organized with varied cohesion; wide vocabulary including some less common items; flexible use of simple + complex grammar with good control; only occasional slips.
-3: Slight irrelevance/omission; reader generally informed and engaged; fairly well organized with some variety of linking; reasonably wide vocabulary (occasional misuse of less common words); good control of simple and some complex grammar. 0–1: Same as Part 1 low bands.
+const overlay        = $('overlay');
 
-UASA / Form 3 Writing
+const modalBackdrop  = $('modalBackdrop');
+const modalClose     = $('modalClose');
+const modalCancel    = $('modalCancel');
+const modalSave      = $('modalSave');
+const modalAnswerTxt = $('modalAnswerText');
 
-Part 1:
-5: Fully relevant; reader well informed; conveys straightforward ideas with an appropriate text type; uses simple linkers/few cohesive devices; good control of basic vocabulary and simple grammar (errors noticeable but not serious).
-3: Slight irrelevance/omission; reader generally informed; simple ideas in simple forms; relies on common linkers; basic vocabulary/grammar sometimes affect understanding. 1–0: Same as SPM Part 1 low bands.
+/* ========= State ========= */
+let lastExtractedTitle  = '';
+let lastExtractedAnswer = '';
 
-Part 2:
-5: Fully relevant; reader well informed; text type engages and informs; coherent and organized with some varied cohesion; fairly wide everyday vocabulary; good control of simple + some complex grammar; errors do not impede understanding.
-3: Slight irrelevance/omission; reader generally informed; text type adequate; mostly simple linkers/limited cohesion; basic vocabulary and simple grammar mostly accurate and understandable. 1–0: Same as above.`;
+/* ========= Helpers ========= */
+function showOverlay(on=true){ overlay.classList.toggle('show', !!on); }
+function openModal(){ modalBackdrop.classList.add('show'); }
+function closeModal(){ modalBackdrop.classList.remove('show'); }
 
-  try { history = JSON.parse(localStorage.getItem('essayProHistory') || '[]'); } catch (_) { history = []; }
-  renderHistory();
+function pickBestText(obj){
+  if(!obj || typeof obj !== 'object') return '';
+  return (obj.text || obj.extracted || obj.ocr || '').toString();
+}
 
-  // ===== File controls =====
-  chooseButton.addEventListener('click', () => fileInput.click());
-  cameraButton.addEventListener('click', () => cameraInput.click());
-  fileInput.addEventListener('change', handleFiles);
-  cameraInput.addEventListener('change', handleFiles);
+function renderScore(payload, rubricCode){
+  resultCard.classList.remove('hidden');
+  badgeRubric.textContent = rubricCode || '-';
 
-  async function pdfToLongImage(file, { maxPages = 3, scale = 1.6, quality = 0.9 } = {}) {
-    const arrayBuf = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
-    const pageCanvases = [];
-    const count = Math.min(pdf.numPages, maxPages);
+  const s = payload.scores || {};
+  scContent.textContent = (s.content ?? '-');
+  scComm.textContent    = (s.communicative ?? s.communicative_achievement ?? '-');
+  scOrg.textContent     = (s.organisation ?? '-');
+  scLang.textContent    = (s.language ?? '-');
+  scTotal.textContent   = (s.total ?? '-');
 
-    for (let i = 1; i <= count; i++) {
-      const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale });
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      const ctx = canvas.getContext("2d");
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      pageCanvases.push(canvas);
+  const rationales = []
+    .concat(payload.rationales || [])
+    .concat(payload.explanations || [])
+    .concat(payload.criteria_explanations || [])
+    .concat(payload.rubric_breakdown || []);
+
+  rationaleList.innerHTML = '';
+  if (rationales.length) {
+    for (const r of rationales) {
+      const li = document.createElement('li');
+      li.textContent = typeof r === 'string' ? r : JSON.stringify(r);
+      rationaleList.appendChild(li);
     }
-
-    const totalHeight = pageCanvases.reduce((sum, c) => sum + c.height, 0);
-    const maxWidth = Math.max(...pageCanvases.map(c => c.width));
-    const out = document.createElement("canvas");
-    out.width = maxWidth;
-    out.height = totalHeight;
-    const outCtx = out.getContext("2d");
-
-    let y = 0;
-    for (const c of pageCanvases) {
-      outCtx.drawImage(c, 0, y);
-      y += c.height;
-    }
-    return out.toDataURL("image/jpeg", quality);
+  } else {
+    const li = document.createElement('li');
+    li.textContent = 'No detailed explanations returned by the API.';
+    rationaleList.appendChild(li);
   }
 
-  function humanSize(bytes){ const u=['B','KB','MB','GB']; let i=0,n=bytes||0; while(n>=1024&&i<u.length-1){n/=1024;i++;} return `${n.toFixed(1)} ${u[i]}`; }
+  suggestions.innerHTML = '';
+  (payload.suggestions || []).forEach(x=>{
+    const li = document.createElement('li'); li.textContent = x;
+    suggestions.appendChild(li);
+  });
+}
 
-  // ✅ 多图处理：支持 多张 image 或 单个 PDF（不允许多 PDF 或 PDF+图混选）
-  async function handleFiles(e){
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
+/* ========= OCR Calls ========= */
+async function ocrFile(file){
+  const fd = new FormData();
+  fd.append('file', file, file.name || 'upload.bin');
+  const res = await fetch(ORIGIN + '/api/ocr', { method:'POST', headers:{ 'X-CSRF-TOKEN': CSRF }, body: fd });
+  const json = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(json?.error || 'OCR failed.');
+  return pickBestText(json);
+}
 
-    const pdfs = files.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
-    const imgs = files.filter(f => f.type.startsWith('image/'));
+async function ocrMany(files){
+  // Rules: either 1 PDF OR one/more images
+  const pdfs = files.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+  const imgs = files.filter(f => f.type.startsWith('image/'));
 
-    // 规则：要么 1 个 PDF；要么 N 张图片；否则提示
-    if (pdfs.length > 1 || (pdfs.length === 1 && imgs.length > 0)) {
-      alert('Please choose either a single PDF or multiple images (not both).');
+  if (pdfs.length > 1 || (pdfs.length === 1 && imgs.length > 0)) {
+    throw new Error('Please select either a single PDF or images (not both).');
+  }
+
+  if (pdfs.length === 1) {
+    return await ocrFile(pdfs[0]);
+  }
+
+  // Images: OCR each and concatenate with separators
+  const parts = [];
+  let i = 0;
+  for (const img of imgs) {
+    i++;
+    const t = await ocrFile(img);
+    parts.push(`--- Image ${i} ---\n${t.trim()}`);
+  }
+  return parts.join('\n\n');
+}
+
+/* ========= Button 1: Extract Title ========= */
+btnTitleOCR.addEventListener('click', () => inpTitleFile.click());
+inpTitleFile.addEventListener('change', async (e)=>{
+  const file = e.target.files?.[0];
+  if(!file) return;
+  try{
+    showOverlay(true);
+    const text = await ocrFile(file);
+    lastExtractedTitle = (text || '').trim();
+    if (lastExtractedTitle) titleEl.value = lastExtractedTitle.slice(0, 200);
+    else alert('OCR returned empty text for title.');
+  }catch(err){
+    console.error(err);
+    alert(err.message || 'Title OCR failed.');
+  }finally{
+    showOverlay(false);
+    e.target.value = '';
+  }
+});
+
+/* ========= Button 2: Extract Answer & Edit (in modal) ========= */
+btnAnswerOCR.addEventListener('click', () => inpAnswerFiles.click());
+inpAnswerFiles.addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files || []);
+  if(!files.length) return;
+
+  // basic total size guard (25 MB)
+  const total = files.reduce((s,f)=>s+f.size,0);
+  if(total > 25*1024*1024){
+    alert('Selected files exceed 25 MB in total.');
+    e.target.value = '';
+    return;
+  }
+
+  try{
+    showOverlay(true);
+    const text = await ocrMany(files);
+    lastExtractedAnswer = (text || '').trim();
+    if (!lastExtractedAnswer) {
+      alert('OCR returned empty text for answer.');
       return;
     }
-
-    // 尺寸限制（与原逻辑一致/更宽松）
-    const totalSize = files.reduce((s,f)=>s+f.size,0);
-    const limit = pdfs.length ? 20*1024*1024 : 25*1024*1024; // 多图给到 25MB 总和
-    if (totalSize > limit) {
-      alert(`Selected files exceed ${limit/1024/1024} MB in total.`);
-      return;
-    }
-
-    selectedFiles = files;
-    previewWrap.classList.remove('hidden');
-    thumbGrid.innerHTML = '';
-    previewMeta.textContent = `Files: ${files.length} · Total: ${humanSize(totalSize)}`;
-
-    if (pdfs.length === 1) {
-      // 单 PDF → 渲染成长图
-      isPdfBundle = true;
-      try {
-        const longImageDataURL = await pdfToLongImage(pdfs[0], { maxPages: 3, scale: 1.6, quality: 0.9 });
-        stitchedDataURL = longImageDataURL;
-        previewImg.src = longImageDataURL;
-        previewImg.classList.remove('hidden');
-        previewPdf.classList.add('hidden');
-        // 构建一个 File 给后端
-        const fileName = (pdfs[0].name.replace(/\.pdf$/i, '') || 'document') + '.jpg';
-        selectedFiles = [new File([dataURLtoBlob(longImageDataURL)], fileName, { type: 'image/jpeg' })];
-        previewMeta.textContent += ` · Rendered as long image (~${Math.round((longImageDataURL.length * 3 / 4)/1024)} KB)`;
-      } catch (err) {
-        console.error(err);
-        previewImg.classList.add('hidden');
-        previewPdf.classList.remove('hidden');
-        previewPdf.textContent = 'Failed to render PDF in browser.';
-        stitchedDataURL = null;
-      }
-      return;
-    }
-
-    // 多张图片：压缩后按顺序拼成长图 + 缩略图网格
-    isPdfBundle = false;
-    const ordered = imgs.sort((a,b) => (a.name||'').localeCompare(b.name||'', undefined, { numeric:true, sensitivity:'base' }));
-
-    // 先生成缩略图预览
-    for (const imgFile of ordered) {
-      const url = URL.createObjectURL(imgFile);
-      const im = document.createElement('img');
-      im.src = url;
-      im.className = 'w-full h-16 object-cover rounded border';
-      thumbGrid.appendChild(im);
-      // 撤销 URL 将在拼接完成后统一处理
-    }
-
-    try {
-      const pieces = [];
-      for (const f of ordered) {
-        const dataURL = await readAsDataURL(f);
-        const compressed = await compressImage(dataURL, 1000, 0.9).catch(()=>dataURL);
-        const img = await loadImage(compressed);
-        pieces.push({ img, w: img.width, h: img.height });
-      }
-
-      const width = Math.max(...pieces.map(p => p.w));
-      const totalHeight = pieces.reduce((s,p)=>s + Math.round(p.h * (width / p.w)), 0);
-      const out = document.createElement('canvas');
-      out.width = width;
-      out.height = totalHeight;
-      const ctx = out.getContext('2d');
-      let y = 0;
-      for (const p of pieces) {
-        const nh = Math.round(p.h * (width / p.w));
-        ctx.drawImage(p.img, 0, y, width, nh);
-        y += nh;
-      }
-      stitchedDataURL = out.toDataURL('image/jpeg', 0.9);
-
-      previewImg.src = stitchedDataURL;
-      previewImg.classList.remove('hidden');
-      previewPdf.classList.add('hidden');
-
-      // 作为单一文件提交给后端
-      selectedFiles = [new File([dataURLtoBlob(stitchedDataURL)], `images_bundle_${Date.now()}.jpg`, { type: 'image/jpeg' })];
-      previewMeta.textContent += ` · Stitched as long image (~${Math.round((stitchedDataURL.length * 3 / 4)/1024)} KB)`;
-    } finally {
-      // 释放临时 URL
-      Array.from(thumbGrid.querySelectorAll('img')).forEach(im => {
-        try { URL.revokeObjectURL(im.src); } catch(_) {}
-      });
-    }
+    // put text into modal editor and open
+    modalAnswerTxt.value = lastExtractedAnswer;
+    openModal();
+  }catch(err){
+    console.error(err);
+    alert(err.message || 'Answer OCR failed.');
+  }finally{
+    showOverlay(false);
+    e.target.value = '';
   }
+});
 
-  function readAsDataURL(file){
-    return new Promise((resolve,reject)=>{
-      const fr = new FileReader();
-      fr.onload = () => resolve(fr.result);
-      fr.onerror = reject;
-      fr.readAsDataURL(file);
-    });
+/* ========= Modal controls ========= */
+[modalClose, modalCancel].forEach(btn=>{
+  btn.addEventListener('click', ()=> closeModal());
+});
+
+modalSave.addEventListener('click', ()=>{
+  const edited = (modalAnswerTxt.value || '').trim();
+  if(!edited){
+    alert('Answer is empty. Please type something.');
+    return;
   }
-  function loadImage(dataURL){
-    return new Promise((resolve,reject)=>{
-      const img = new Image();
-      img.onload = ()=> resolve(img);
-      img.onerror = reject;
-      img.src = dataURL;
-    });
-  }
+  answerEl.value = edited;     // save to final answer box
+  btnGrade.disabled = false;   // enable grading
+  closeModal();
+});
 
-  function compressImage(dataURL, maxEdge=1000, quality=0.9){
-    return new Promise(resolve=>{
-      const img = new Image();
-      img.onload = ()=>{
-        const scale = Math.min(maxEdge/img.width, maxEdge/img.height, 1);
-        const w = Math.round(img.width*scale), h = Math.round(img.height*scale);
-        const c = document.createElement('canvas'); c.width=w; c.height=h;
-        c.getContext('2d').drawImage(img,0,0,w,h);
-        resolve(c.toDataURL('image/jpeg', quality));
-      };
-      img.src = dataURL;
-    });
-  }
+/* ========= Button 3: Grade (use edited answer) ========= */
+btnGrade.addEventListener('click', async ()=>{
+  const text = (answerEl.value || '').trim();
+  if(!text){ alert('Answer is empty.'); return; }
 
-  function dataURLtoBlob(dataURL){
-    const [h,b] = dataURL.split(',');
-    const mime = h.match(/:(.*?);/)[1];
-    const bin = atob(b); const len=bin.length; const u8=new Uint8Array(len);
-    for(let i=0;i<len;i++) u8[i]=bin.charCodeAt(i);
-    return new Blob([u8],{type:mime});
-  }
-
-  // ===== Main pipeline =====
-  btnRun.addEventListener('click', runExtractAndScore);
-
-  async function runExtractAndScore(){
-    runStatus.textContent = '';
-    const old = btnRun.textContent;
-    btnRun.disabled = true; btnRun.textContent = 'Processing…';
-    overlay.classList.add('show');
-
-    try{
-      const { original, corrected, dc_explanations } = await doDirectCorrect();
-      essayText.value = corrected || original || '';
-      renderAnnotations(original || '', corrected || original || '');
-      const gradePayload = await doGrade(essayText.value.trim(), rubricEl.value, titleEl.value || '');
-      renderScore(gradePayload, rubricEl.value);
-      pushHistory({
-        time: new Date().toLocaleString(),
-        title: titleEl.value || '',
-        rubric: rubricEl.value || '',
-        extracted: original || '',
-        corrected: corrected || original || '',
-        explanations: Array.isArray(dc_explanations) ? dc_explanations : []
-      });
-      runStatus.textContent = '✅ Done.';
-    }catch(err){
-      console.error(err);
-      runStatus.textContent = '❌ Failed. Check API / network.';
-      alert(err.message || 'AI processing failed.');
-    }finally{
-      btnRun.disabled = false; btnRun.textContent = old;
-      overlay.classList.remove('show');
-    }
-  }
-
-  // Extract+Correct (image/pdf or raw text)
-  async function doDirectCorrect(){
-    const fd = new FormData();
-    fd.append('title', titleEl.value || '');
-    const rawText = (essayText.value || '').trim();
-
-    if (selectedFiles.length > 0) {
-      // 发送单一“拼接后”的文件（或 PDF 渲染后的图）
-      const theFile = selectedFiles[0];
-      fd.append('file', theFile, theFile.name);
-    } else if (rawText) {
-      fd.append('text', rawText);
-    } else {
-      throw new Error('Provide a file or text.');
-    }
-
-    const res = await fetch(ORIGIN + '/api/essay/direct-correct', { method:'POST', body:fd });
-    const json = await res.json().catch(()=>({}));
-    if(!res.ok || !json.ok){ throw new Error(json.error || 'Extract/Correct failed.'); }
-    return { original: json.extracted || '', corrected: json.corrected || json.extracted || '', dc_explanations: json.explanations || [] };
-    // （如果后端未来支持多文件字段，也可在此处循环 append('files[]', file) 发送原始多图）
-  }
-
-  // Grade
-  async function doGrade(text, rubric, title){
-    if(!text) throw new Error('Empty text to grade.');
+  try{
+    showOverlay(true);
+    const payload = { title: titleEl.value || '', rubric: rubricEl.value, text };
     const res = await fetch(ORIGIN + '/api/grade', {
       method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ title: title || '', rubric, text })
+      headers:{ 'Content-Type':'application/json', 'X-CSRF-TOKEN': CSRF },
+      body: JSON.stringify(payload)
     });
     const json = await res.json().catch(()=>({}));
-    if(!res.ok || !json.ok){ throw new Error(json.error || 'Grade failed.'); }
-    return json;
+    if(!res.ok || !json.ok) throw new Error(json?.error || 'Grading failed.');
+
+    renderScore(json, rubricEl.value);
+  }catch(err){
+    console.error(err);
+    alert(err.message || 'Grading failed.');
+  }finally{
+    showOverlay(false);
   }
-
-  // Render score and explanations
-  function renderScore(payload, rubricCode){
-    resultCard.classList.remove('hidden');
-    badgeRubric.textContent = rubricCode || '-';
-
-    // cache last grade for export
-    window.__lastGrade = payload;
-
-    const s = payload.scores || {};
-    scContent.textContent = valNum(s.content);
-    scComm.textContent   = valNum(s.communicative ?? s.communicative_achievement);
-    scOrg.textContent    = valNum(s.organisation);
-    scLang.textContent   = valNum(s.language);
-    scTotal.textContent  = valNum(s.total);
-
-    const rationales = []
-      .concat(payload.rationales || [])
-      .concat(payload.explanations || [])
-      .concat(payload.criteria_explanations || [])
-      .concat(payload.rubric_breakdown || []);
-
-    rationaleList.innerHTML = '';
-    rationales.forEach(x=>{
-      if(!x) return;
-      const li = document.createElement('li'); li.textContent = typeof x === 'string' ? x : JSON.stringify(x);
-      rationaleList.appendChild(li);
-    });
-    if(!rationales.length){
-      const li = document.createElement('li'); li.textContent = 'No detailed explanations returned by the API.';
-      rationaleList.appendChild(li);
-    }
-
-    suggestions.innerHTML = '';
-    (payload.suggestions || []).forEach(x=>{
-      const li = document.createElement('li'); li.textContent = x; suggestions.appendChild(li);
-    });
-  }
-
-  function valNum(x){ return (x ?? '-') }
-
-  // Annotated diff
-  function renderAnnotations(original, corrected){
-    origTextEl.textContent = original || '-';
-    corrTextEl.textContent = corrected || '-';
-    const diffHtml = makeAnnotatedDiff(original || '', corrected || '');
-    diffHtmlEl.innerHTML = diffHtml;
-    annotCard.classList.remove('hidden');
-  }
-
-  function makeAnnotatedDiff(a, b){
-    const at = tokenize(a); const bt = tokenize(b); const lcs = buildLCS(at, bt);
-    let i=0, j=0, html='';
-    for (const [ti, tj] of lcs){
-      while(i < ti){ html += `<del>${escapeHTML(at[i])}</del>`; i++; }
-      while(j < tj){ html += `<ins>${escapeHTML(bt[j])}</ins>`; j++; }
-      if (ti < at.length && tj < bt.length){ html += escapeHTML(at[ti]); i = ti + 1; j = tj + 1; }
-    }
-    while(i < at.length){ html += `<del>${escapeHTML(at[i++])}</del>`; }
-    while(j < bt.length){ html += `<ins>${escapeHTML(bt[j++])}</ins>`; }
-    return html;
-  }
-
-  function tokenize(s){ const re=/[A-Za-z0-9’'’-]+|\s+|[^\sA-Za-z0-9]/g; const out=[]; let m; while((m=re.exec(s))){ out.push(m[0]); } return out.length?out:[s]; }
-  function buildLCS(a,b){ const n=a.length,m=b.length,dp=Array.from({length:n+1},()=>Array(m+1).fill(0)); for(let i=n-1;i>=0;i--){ for(let j=m-1;j>=0;j--){ dp[i][j]=(a[i]===b[j])?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]); } } const path=[]; let i=0,j=0; while(i<n&&j<m){ if(a[i]===b[j]){ path.push([i,j]); i++; j++; } else if(dp[i+1][j]>=dp[i][j+1]) i++; else j++; } return path; }
-  function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
-
-  // ===== DOCX Export =====
-  document.addEventListener('DOMContentLoaded', () => {
-    const btn = document.getElementById('btnExportDocx');
-    if (!btn) return;
-
-    btn.addEventListener('click', async (ev) => {
-      ev.preventDefault();
-      const oldLabel = btn.textContent;
-      btn.disabled = true; btn.textContent = 'Exporting…';
-
-      try {
-        const editorText = (essayText.value || '').trim();
-        const origDom = document.getElementById('origText');
-        let extracted = (origDom?.textContent || '').trim();
-        let corrected = editorText;
-
-        if (!extracted) extracted = editorText;
-        if (!corrected) { alert('Nothing to export (editor is empty).'); return; }
-
-        const fromDom = Array.from(document.querySelectorAll('#rationaleList li')).map(li => li.textContent);
-        const last = window.__lastGrade || {};
-        const explanations = [
-          ...(last.rationales || []),
-          ...(last.explanations || []),
-          ...(last.criteria_explanations || []),
-          ...(last.rubric_breakdown || []),
-          ...fromDom
-        ].filter(Boolean).slice(0, 50);
-
-        const payload = {
-          title: (document.getElementById('title').value || 'Essay Report').slice(0, 200),
-          extracted,
-          corrected,
-          explanations
-        };
-
-        const tryUrls = [
-          ...API_EXPORT_DOCX,
-          ORIGIN + '/essay/export-docx-direct',
-          APP_ABS + '/essay/export-docx-direct',
-        ];
-
-        for (const u of tryUrls) {
-          try {
-            const res = await fetch(u, {
-              method:'POST',
-              headers:{
-                'Content-Type':'application/json',
-                'Accept':'application/vnd.openxmlformats-officedocument.wordprocessingml.document, application/octet-stream'
-              },
-              body: JSON.stringify(payload),
-              redirect: 'follow',
-              cache: 'no-store',
-            });
-
-            const blob = await res.blob();
-            const ct = (res.headers.get('content-type') || '').toLowerCase();
-            const cd = res.headers.get('content-disposition') || '';
-
-            const okDoc =
-              res.ok && (
-                ct.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
-                ct.includes('application/octet-stream') ||
-                /filename=.*\.docx/i.test(cd) ||
-                (blob && blob.size > 1000)
-              );
-
-            if (okDoc) {
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              const m = cd.match(/filename\*=UTF-8''([^;]+)|filename="?([^"]+)"?/i);
-              const fname = m ? decodeURIComponent(m[1] || m[2]) : 'essay-report.docx';
-              a.href = url; a.download = fname.endsWith('.docx') ? fname : (fname + '.docx');
-              document.body.appendChild(a); a.click(); a.remove();
-              URL.revokeObjectURL(url);
-              console.log('[Export] success via:', u);
-              return;
-            } else {
-              try {
-                const text = await blob.text();
-                console.warn('[Export] Not DOCX:', { u, status: res.status, ct, cd, head: text.slice(0, 300) });
-              } catch (_) {
-                console.warn('[Export] Not DOCX & unreadable blob:', { u, status: res.status, ct, cd, size: blob?.size });
-              }
-            }
-          } catch (e) {
-            console.warn('[Export] fetch error:', u, e);
-          }
-        }
-
-        alert('❌ Export failed: server did not return DOCX (check Network/Console logs).');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = oldLabel;
-      }
-    });
-  });
-
-  // ===== Local history =====
-  function pushHistory(item){
-    history.unshift(item);
-    history = history.slice(0, 50);
-    localStorage.setItem('essayProHistory', JSON.stringify(history));
-    renderHistory();
-  }
-
-  function renderHistory(){
-    histCount.textContent = `${history.length} record(s)`;
-    historyList.innerHTML = history.map((h,idx)=>`
-      <details class="bg-gray-50 rounded-lg p-3 border">
-        <summary class="cursor-pointer font-semibold text-gray-800 truncate">
-          ${escapeHTML(h.time)} — ${escapeHTML(h.title||'(No title)')}
-        </summary>
-        <div class="mt-2 text-sm text-gray-700 space-y-2">
-          <p><strong>Rubric:</strong> ${escapeHTML(h.rubric||'-')}</p>
-          ${h.extracted ? `<div><strong>Extracted:</strong><br>${escapeHTML(h.extracted)}</div>`:''}
-          ${h.corrected ? `<div><strong>Corrected:</strong><br>${escapeHTML(h.corrected)}</div>`:''}
-          ${(h.explanations||[]).length ? `
-            <div><strong>Explanations:</strong>
-              <ul class="list-disc pl-5">${h.explanations.map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul>
-            </div>` : ''
-          }
-          <div class="pt-1">
-            <button data-idx="${idx}" class="btnLoad text-blue-600 underline">Load to editor</button>
-            <button data-idx="${idx}" class="btnDelete text-red-600 underline ml-3">Delete</button>
-          </div>
-        </div>
-      </details>
-    `).join('');
-
-    historyList.querySelectorAll('.btnLoad').forEach(btn=>{
-      btn.onclick = ()=>{
-        const i = +btn.getAttribute('data-idx');
-        const h = history[i]; if(!h) return;
-        titleEl.value = h.title || '';
-        rubricEl.value = h.rubric || 'SPM_P1';
-        essayText.value = h.corrected || h.extracted || '';
-        renderAnnotations(h.extracted || '', h.corrected || '');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      };
-    });
-    historyList.querySelectorAll('.btnDelete').forEach(btn=>{
-      btn.onclick = ()=>{
-        const i = +btn.getAttribute('data-idx');
-        history.splice(i,1);
-        localStorage.setItem('essayProHistory', JSON.stringify(history));
-        renderHistory();
-      };
-    });
-  }
-
-  $('btnSaveSnapshot').addEventListener('click', ()=>{
-    pushHistory({
-      time: new Date().toLocaleString(),
-      title: titleEl.value || '',
-      rubric: rubricEl.value || '',
-      extracted: (origTextEl?.textContent || ''),
-      corrected: (essayText.value||'').trim(),
-      explanations: Array.from(document.querySelectorAll('#rationaleList li')).map(li=>li.textContent).slice(0,10)
-    });
-  });
-
-  $('btnClearHistory').addEventListener('click', ()=>{
-    if(confirm('Clear all local history?')){
-      history = [];
-      localStorage.removeItem('essayProHistory');
-      renderHistory();
-    }
-  });
+});
 </script>
 @endsection
