@@ -1,8 +1,8 @@
 {{-- resources/views/essay-pro.blade.php --}}
-@extends('layouts.app') 
-  
+@extends('layouts.app')  
+
 @section('title', '✍️ Essay Pro — Two-Step OCR → Edit → Analyze') 
-  
+
 @section('content')  
 <div class="min-h-[70vh] flex flex-col items-center justify-center p-4"> 
   <div class="bg-white shadow-2xl rounded-2xl p-6 w-full max-w-6xl text-left transition-all duration-300 overflow-x-hidden">
@@ -49,7 +49,7 @@
           <input id="title" type="text" placeholder="e.g., The Importance of Reading"
                  class="flex-1 rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
           <button id="cameraTitleButton" class="px-3 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 text-sm">
-            📷 Snap Title
+            📷 Take Photo
           </button>
           <input type="file" id="cameraTitleInput" accept="image/*" capture="environment" class="hidden">
         </div>
@@ -893,9 +893,9 @@ function compressImage(dataURL, maxWidth=1200, quality=0.9){
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
+      const ctx = canvas.getContext('2d'); 
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);  
+      resolve(canvas.toDataURL('image/jpeg', quality)); 
     };
     img.onerror = reject;
     img.src = dataURL;
