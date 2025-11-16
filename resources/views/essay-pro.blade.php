@@ -45,13 +45,17 @@
       <div>
         {{-- Title row --}}
         <label class="block text-sm font-medium text-gray-700 mb-1">Essay Title</label>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
           <input id="title" type="text" placeholder="e.g., The Importance of Reading"
-                 class="flex-1 rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-          <button id="cameraTitleButton" class="px-3 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 text-sm">
+                 class="flex-1 min-w-[180px] rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+          <button id="cameraTitleButton" class="px-3 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 text-sm whitespace-nowrap">
             📷 Take Photo
           </button>
+          <button id="uploadTitleButton" class="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm whitespace-nowrap">
+            📁 Upload from device
+          </button>
           <input type="file" id="cameraTitleInput" accept="image/*" capture="environment" class="hidden">
+          <input type="file" id="uploadTitleInput" accept="image/*" class="hidden">
         </div>
 
         {{-- Rubric --}}
@@ -81,7 +85,7 @@
               📷 Take Photo
             </button>
             <button id="chooseButton" class="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700">
-              📁 Choose File(s)
+              📁 Upload from device
             </button>
             <label class="inline-flex items-center gap-2 text-sm text-gray-700">
               <input id="stitchToggle" type="checkbox" class="rounded" checked>
@@ -289,7 +293,10 @@ const btnExportDocx = $('btnExportDocx');
 const overlay = $('overlay');
 
 // Title snap
-const cameraTitleButton = $('cameraTitleButton'), cameraTitleInput = $('cameraTitleInput');
+const cameraTitleButton = $('cameraTitleButton'),
+      cameraTitleInput  = $('cameraTitleInput'),
+      uploadTitleButton = $('uploadTitleButton'),
+      uploadTitleInput  = $('uploadTitleInput');
 
 // Results
 const resultCard = $('resultCard');
@@ -469,6 +476,8 @@ async function doOCR(){
 async function ocrSingle(file){
   const fd = new FormData();
   fd.append('file', file, file.name || 'upload.bin');
+  // Optional hint for backend if you later want to tune OCR:
+  // fd.append('mode', 'essay'); 
   const res = await fetch(ORIGIN + '/api/ocr', { method:'POST', headers: { 'X-CSRF-TOKEN': CSRF }, body: fd });
   const json = await res.json().catch(()=>({}));
   if (!res.ok) throw new Error('OCR error: ' + (json?.error || res.status));
@@ -548,7 +557,7 @@ async function suggestCorrections(){
     analyzeStatus.textContent = '💡 Suggestions ready (see Annotated Changes).';
 
     // Optionally apply corrected text to editor? Keep original for user's control.
-    // essayText.value = corrected; // <— keep commented to respect manual confirmation
+    // essayText.value = corrected;
 
   } catch (e) {
     console.error(e);
@@ -627,13 +636,14 @@ function humanSize(bytes){ const u=['B','KB','MB','GB']; let i=0,n=bytes||0; whi
 
 /* =========================
    Image tools (stitch) + PDF preview
+   (slightly higher width & quality to help OCR a bit)
 ========================= */
 async function stitchImages(files){
   // Compress & equalize widths, then vertical stitch
   const pieces = [];
   for (const f of files) {
     const dataURL = await readAsDataURL(f);
-    const compressed = await compressImage(dataURL, 1200, 0.9).catch(()=>dataURL);
+    const compressed = await compressImage(dataURL).catch(()=>dataURL);
     const img = await loadImage(compressed);
     pieces.push({ img, w: img.width, h: img.height });
   }
@@ -648,7 +658,7 @@ async function stitchImages(files){
     ctx.drawImage(p.img, 0, y, width, nh);
     y += nh;
   }
-  return out.toDataURL('image/jpeg', 0.92);
+  return out.toDataURL('image/jpeg', 0.95);
 }
 
 function showStitchedPreview(dataURL){
@@ -702,26 +712,33 @@ async function renderPdfFirstPage(file){
 }
 
 /* =========================
-   Title Snap (OCR)
+   Title Snap (OCR) — Take Photo + Upload
 ========================= */
-cameraTitleButton.addEventListener('click',()=>cameraTitleInput.click());
-cameraTitleInput.addEventListener('change', async (e)=>{
+cameraTitleButton.addEventListener('click', ()=>cameraTitleInput.click());
+uploadTitleButton.addEventListener('click', ()=>uploadTitleInput.click());
+cameraTitleInput.addEventListener('change', handleTitleImage);
+uploadTitleInput.addEventListener('change', handleTitleImage);
+
+async function handleTitleImage(e){
   const f = e.target.files?.[0]; if (!f) return;
   overlay.classList.add('show');
   try{
-    const fd = new FormData(); fd.append('file', f, f.name || 'title.jpg');
+    const fd = new FormData();
+    fd.append('file', f, f.name || 'title.jpg');
+    // Optional hint for backend tuning:
+    // fd.append('mode', 'title');
     const res = await fetch(ORIGIN + '/api/ocr', { method:'POST', headers: { 'X-CSRF-TOKEN': CSRF }, body: fd });
     const json = await res.json().catch(()=>({}));
     const t = (json.text || json.extracted || json.ocr || '').trim();
     if (t) titleEl.value = t.slice(0, 200);
-    else alert('Failed to extract title text.');
+    else alert('Failed to extract title text. Please try a clearer photo or type manually.');
   }catch(err){
     console.error(err); alert('Title OCR error.');
   }finally{
     overlay.classList.remove('show');
     e.target.value = '';
   }
-});
+}
 
 /* =========================
    DOCX Export
@@ -885,7 +902,7 @@ btnClearHistory.addEventListener('click', ()=>{
 });
 
 /* ===== helpers ===== */
-function compressImage(dataURL, maxWidth=1200, quality=0.9){
+function compressImage(dataURL, maxWidth=1600, quality=0.95){
   return new Promise((resolve,reject)=>{
     const img = new Image();
     img.onload = ()=>{
