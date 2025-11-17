@@ -1,16 +1,16 @@
 {{-- resources/views/essay-pro.blade.php --}}
 @extends('layouts.app')  
 
-@section('title', '✍️ Essay Pro — Two-Step OCR → Edit → Analyze') 
+@section('title', '🧠 SmartMark — Essay grading for UASA & SPM') 
 
 @section('content')  
 <div class="min-h-[70vh] flex flex-col items-center justify-center p-4"> 
   <div class="bg-white shadow-2xl rounded-2xl p-6 w-full max-w-6xl text-left transition-all duration-300 overflow-x-hidden">
 
     {{-- Header --}}
-    <div class="flex items-center justify-between gap-4 mb-4">
-      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
-        ✍️ Essay Pro — OCR → Edit → Analyze
+    <div class="flex items-center justify-between gap-4 mb-4"> 
+      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent"> 
+        🧠 SmartMark — Rater Buddy for UASA &amp; SPM
       </h1>
       <div class="flex items-center gap-2">
         <button id="btnExportDocx" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition">
@@ -356,8 +356,12 @@ async function handleFiles(e){
   if(!files.length) return;
 
   // Enforce: single PDF OR one/more images
-  const pdfs = files.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
-  const imgs = files.filter(f => f.type.startsWith('image/'));
+  const pdfs = files.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test((f.name || '')));
+  const imgs = files.filter(f => {
+    const name = (f.name || '').toLowerCase();
+    return (f.type && f.type.startsWith('image/')) ||
+           /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(name);
+  });
 
   if (pdfs.length > 1 || (pdfs.length === 1 && imgs.length > 0)) {
     alert('Please choose either a single PDF or images (not both).');
@@ -420,8 +424,12 @@ async function doOCR(){
   btnSuggest.disabled = true;
 
   try {
-    const pdfs = selectedFiles.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
-    const imgs = selectedFiles.filter(f => f.type.startsWith('image/'));
+    const pdfs = selectedFiles.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test((f.name || '')));
+    const imgs = selectedFiles.filter(f => {
+      const name = (f.name || '').toLowerCase();
+      return (f.type && f.type.startsWith('image/')) ||
+             /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(name);
+    });
 
     let text = '';
 

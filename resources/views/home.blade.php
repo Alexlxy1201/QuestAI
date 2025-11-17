@@ -11,6 +11,14 @@
     <p class="text-gray-600 mb-10 text-lg">Your smart study companion — powered by GPT & Vision AI</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      {{-- 📝 SmartMark（SPM/UASA） --}}
+      <a href="{{ route('essay.pro') }}"
+         class="group relative overflow-hidden rounded-2xl p-6 bg-white border-2 border-transparent shadow-md hover:border-sky-500 hover:shadow-sky-200 transition transform hover:-translate-y-1 md:col-span-2">
+        <div class="text-4xl mb-3">📝</div>
+        <div class="font-bold text-xl mb-1 text-gray-900 group-hover:text-sky-700">SmartMark (SPM/UASA)</div>
+        <p class="text-sm text-gray-500">OCR → AI scoring (Content/Comm/Org/Language) → Export report</p>
+      </a>
+
       {{-- 📘 AI Quiz Solver --}}
       <a href="{{ route('solve.index') }}"
          class="group relative overflow-hidden rounded-2xl p-6 bg-white border-2 border-transparent shadow-md hover:border-indigo-500 hover:shadow-indigo-200 transition transform hover:-translate-y-1">
@@ -41,14 +49,6 @@
         <div class="text-4xl mb-3">🏫</div>
         <div class="font-bold text-xl mb-1 text-gray-900 group-hover:text-amber-700">AI Grader</div>
         <p class="text-sm text-gray-500">Upload answers for instant grading and feedback</p>
-      </a>
-
-      {{-- 📝 Essay Pro（新） --}}
-      <a href="{{ route('essay.pro') }}"
-         class="group relative overflow-hidden rounded-2xl p-6 bg-white border-2 border-transparent shadow-md hover:border-sky-500 hover:shadow-sky-200 transition transform hover:-translate-y-1 md:col-span-2">
-        <div class="text-4xl mb-3">📝</div>
-        <div class="font-bold text-xl mb-1 text-gray-900 group-hover:text-sky-700">Essay Pro (SPM/UASA)</div>
-        <p class="text-sm text-gray-500">OCR → AI scoring (Content/Comm/Org/Language) → Export report</p>
       </a>
     </div>
   </div>

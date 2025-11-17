@@ -22,12 +22,12 @@
           🏠 Home
         </a>
 
-        {{-- 📝 Essay Pro （修正为 essay.pro）--}}
+        {{-- 📝 SmartMark (rename from Essay Pro) --}}
         <a href="{{ route('essay.pro') }}"
            class="px-4 py-2 rounded-xl text-sm font-semibold transition
            {{ request()->routeIs('essay.pro') ? 'bg-sky-700 text-white shadow-md scale-105'
                                               : 'text-gray-800 hover:bg-sky-50 hover:text-sky-700' }}">
-          📝 Essay Pro
+          📝 SmartMark
         </a>
         
         {{-- 📘 Quiz Solver --}}
@@ -81,36 +81,42 @@
 
     {{-- 🔹 Mobile Menu --}}
     <div id="mobile-menu" class="hidden md:hidden pb-4">
+      {{-- 🏠 Home --}}
       <a href="{{ route('home') }}" 
         class="block px-3 py-2 rounded-md text-base font-semibold 
         {{ request()->routeIs('home') ? 'bg-indigo-100 text-indigo-800' : 'text-gray-700 hover:bg-gray-100' }}">
         🏠 Home
       </a>
-      
-      <a href="{{ route('solve.index') }}" 
-        class="block px-3 py-2 rounded-md text-base font-semibold 
-        {{ request()->routeIs('solve.*') ? 'bg-blue-100 text-blue-800' : 'text-gray-700 hover:bg-gray-100' }}">
-        📝 Essay Pro
-      </a>
 
+      {{-- 📝 SmartMark --}}
+      <a href="{{ route('essay.pro') }}" 
+        class="block px-3 py-2 rounded-md text-base font-semibold 
+        {{ request()->routeIs('essay.pro') ? 'bg-sky-100 text-sky-800' : 'text-gray-700 hover:bg-gray-100' }}">
+        📝 SmartMark
+      </a>
+      
+      {{-- 📘 Quiz Solver --}}
       <a href="{{ route('solve.index') }}" 
         class="block px-3 py-2 rounded-md text-base font-semibold 
         {{ request()->routeIs('solve.*') ? 'bg-blue-100 text-blue-800' : 'text-gray-700 hover:bg-gray-100' }}">
         📘 Quiz Solver
       </a>
 
+      {{-- ✍️ Corrector --}}
       <a href="{{ route('corrector.index') }}" 
         class="block px-3 py-2 rounded-md text-base font-semibold 
         {{ request()->routeIs('corrector.*') ? 'bg-violet-100 text-violet-800' : 'text-gray-700 hover:bg-gray-100' }}">
         ✍️ Corrector
       </a>
 
+      {{-- 🧠 Generator --}}
       <a href="{{ route('generator.index') }}" 
         class="block px-3 py-2 rounded-md text-base font-semibold 
         {{ request()->routeIs('generator.*') ? 'bg-purple-100 text-purple-800' : 'text-gray-700 hover:bg-gray-100' }}">
         🧠 Generator
       </a>
 
+      {{-- 🏫 Grader --}}
       <a href="{{ route('grader') }}" 
         class="block px-3 py-2 rounded-md text-base font-semibold 
         {{ request()->routeIs('grader*') ? 'bg-cyan-100 text-cyan-800' : 'text-gray-700 hover:bg-gray-100' }}">
