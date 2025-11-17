@@ -12,9 +12,9 @@
       <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent"> 
         🧠 SmartMark — Rater Buddy for UASA &amp; SPM
       </h1>
-      <div class="flex items-center gap-2">
-        <button id="btnExportDocx" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition">
-          ⬇️ Export (.docx)
+      <div class="flex items-center gap-2"> 
+        <button id="btnExportDocx" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition"> 
+          ⬇️ Export (.docx) 
         </button>
         <a href="{{ route('home') ?? url('/') }}" class="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition">Back</a>
       </div>
@@ -439,17 +439,21 @@ async function doOCR(){
     } else if (imgs.length > 0) {
       // Either stitch and send once, or OCR each image and concatenate (no extra labels, no trims)
       if (stitchToggle.checked && imgs.length > 1) {
+        // stitchImages 里已经会把各图片转成 JPEG 再拼接
         const stitched = await stitchImages(imgs);
         showStitchedPreview(stitched);
         const stitchedFile = dataURLtoFile(stitched, `images_bundle_${Date.now()}.jpg`);
         text = await ocrSingle(stitchedFile);
       } else if (imgs.length === 1) {
-        text = await ocrSingle(imgs[0]);
+        // ✅ 单张图：统一转成 JPEG 再发给后端，避免 HEIC 等格式不兼容
+        const normalized = await normalizeImageFile(imgs[0]);
+        text = await ocrSingle(normalized);
       } else {
         // Multi-image, per-image OCR concatenate WITHOUT adding markers or trimming
         const chunks = [];
         for (const f of imgs) {
-          const t = await ocrSingle(f);
+          const normalized = await normalizeImageFile(f);
+          const t = await ocrSingle(normalized);
           chunks.push(t); // keep as-is
         }
         text = chunks.join('\n\n'); // minimal separation only
@@ -720,6 +724,16 @@ async function renderPdfFirstPage(file){
 }
 
 /* =========================
+   👉 Normalize image file to JPEG (for camera / HEIC etc.)
+========================= */
+async function normalizeImageFile(file, maxWidth=1600, quality=0.95){
+  const dataURL = await readAsDataURL(file);
+  const compressed = await compressImage(dataURL, maxWidth, quality).catch(()=>dataURL);
+  const base = (file.name || 'image').replace(/\.[^.]+$/, '');
+  return dataURLtoFile(compressed, base + '.jpg');
+}
+
+/* =========================
    Title Snap (OCR) — Take Photo + Upload
 ========================= */
 cameraTitleButton.addEventListener('click', ()=>cameraTitleInput.click());
@@ -731,8 +745,10 @@ async function handleTitleImage(e){
   const f = e.target.files?.[0]; if (!f) return;
   overlay.classList.add('show');
   try{
+    // ✅ Title 这边也统一转成 JPEG
+    const srcFile = await normalizeImageFile(f, 1600, 0.95);
     const fd = new FormData();
-    fd.append('file', f, f.name || 'title.jpg');
+    fd.append('file', srcFile, srcFile.name || 'title.jpg');
     // Optional hint for backend tuning:
     // fd.append('mode', 'title');
     const res = await fetch(ORIGIN + '/api/ocr', { method:'POST', headers: { 'X-CSRF-TOKEN': CSRF }, body: fd });
