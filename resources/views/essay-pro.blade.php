@@ -43,20 +43,31 @@
     <div class="grid lg:grid-cols-2 gap-6">
       {{-- Left: Inputs + Files + OCR --}}
       <div>
-        {{-- Title row --}}
-        <label class="block text-sm font-medium text-gray-700 mb-1">Essay Title</label>
-        <div class="flex flex-wrap gap-2">
-          <input id="title" type="text" placeholder="e.g., The Importance of Reading"
-                 class="flex-1 min-w-[180px] rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-          <button id="cameraTitleButton" class="px-3 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 text-sm whitespace-nowrap">
-            📷 Take Photo
-          </button>
-          <button id="uploadTitleButton" class="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm whitespace-nowrap">
-            📁 Upload from device
-          </button>
+        {{-- Question row --}}
+        <label class="block text-sm font-medium text-gray-700 mb-1">
+          Essay Question (prompt)
+        </label>
+        <div class="flex flex-col md:flex-row md:items-start gap-2">
+          <textarea
+            id="title"
+            rows="3"
+            placeholder="e.g., Write a story about a time you helped someone in need."
+            class="w-full md:flex-1 rounded-xl border-gray-200 px-3 py-2 text-sm md:text-base min-h-[80px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          ></textarea>
+          <div class="flex flex-row md:flex-col gap-2">
+            <button id="cameraTitleButton" class="px-3 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 text-sm whitespace-nowrap">
+              📷 Take Photo
+            </button>
+            <button id="uploadTitleButton" class="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm whitespace-nowrap">
+              📁 Upload from device
+            </button>
+          </div>
           <input type="file" id="cameraTitleInput" accept="image/*" capture="environment" class="hidden">
           <input type="file" id="uploadTitleInput" accept="image/*" class="hidden">
         </div>
+        <p class="mt-1 text-xs text-gray-500">
+          Take a photo or upload the essay question. OCR will try to capture the full question text here.
+        </p>
 
         {{-- Rubric --}}
         <div class="mt-4">
@@ -97,7 +108,7 @@
           <div id="previewWrap" class="mt-3 hidden">
             <img id="previewImg" class="max-h-56 rounded-xl shadow border border-gray-100 mx-auto hidden" alt="preview image">
             <div id="previewPdf" class="text-sm text-gray-600 mt-2 hidden"></div>
-            <canvas id="pdfCanvas" class="hidden max-h-56 rounded-xl shadow border border-gray-100 mx-auto"></canvas>
+            <canvas id="pdfCanvas" class="hidden max-h-56 rounded-2xl shadow border border-gray-100 mx-auto"></canvas>
             <div id="previewMeta" class="text-xs text-gray-500 mt-1"></div>
             <div id="thumbGrid" class="mt-2 grid grid-cols-6 gap-2"></div>
           </div>
@@ -136,7 +147,9 @@
     <div class="mt-6">
       <label class="block text-sm font-medium text-gray-700 mb-1">Rubric Reference (editable)</label>
       <textarea id="rubricRef" rows="8" class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
-      <p class="text-xs text-gray-400 mt-1">This stays local and is not sent to the backend.</p>
+      <p class="text-xs text-gray-400 mt-1">
+        You can paste or edit the rubric here. A copy may be used to help generate clearer score explanations.
+      </p>
     </div>
 
     {{-- Score --}}
@@ -230,7 +243,6 @@
 
 {{-- ===== Styles ===== --}}
 <style>
-  /* Keep layout stable when details open/close or scrollbar appears */
   html { scrollbar-gutter: stable both-edges; }
   body { min-height: 100vh; overflow-y: scroll; }
 
@@ -439,17 +451,14 @@ async function doOCR(){
     } else if (imgs.length > 0) {
       // Either stitch and send once, or OCR each image and concatenate (no extra labels, no trims)
       if (stitchToggle.checked && imgs.length > 1) {
-        // stitchImages 里已经会把各图片转成 JPEG 再拼接
         const stitched = await stitchImages(imgs);
         showStitchedPreview(stitched);
         const stitchedFile = dataURLtoFile(stitched, `images_bundle_${Date.now()}.jpg`);
         text = await ocrSingle(stitchedFile);
       } else if (imgs.length === 1) {
-        // ✅ 单张图：统一转成 JPEG 再发给后端，避免 HEIC 等格式不兼容
         const normalized = await normalizeImageFile(imgs[0]);
         text = await ocrSingle(normalized);
       } else {
-        // Multi-image, per-image OCR concatenate WITHOUT adding markers or trimming
         const chunks = [];
         for (const f of imgs) {
           const normalized = await normalizeImageFile(f);
@@ -488,8 +497,8 @@ async function doOCR(){
 async function ocrSingle(file){
   const fd = new FormData();
   fd.append('file', file, file.name || 'upload.bin');
-  // Optional hint for backend if you later want to tune OCR:
-  // fd.append('mode', 'essay'); 
+  // Hint for backend: essay body OCR
+  fd.append('mode', 'essay');
   const res = await fetch(ORIGIN + '/api/ocr', { method:'POST', headers: { 'X-CSRF-TOKEN': CSRF }, body: fd });
   const json = await res.json().catch(()=>({}));
   if (!res.ok) throw new Error('OCR error: ' + (json?.error || res.status));
@@ -512,7 +521,13 @@ async function analyzeEdited(){
   btnAnalyze.disabled = true;
 
   try {
-    const payload = { title: titleEl.value || '', rubric: rubricEl.value, text };
+    const payload = {
+      title: titleEl.value || '',
+      rubric: rubricEl.value,
+      rubric_ref: rubricRef.value || '',
+      need_explanation: true,
+      text
+    };
     const res = await fetch(ORIGIN + '/api/grade', {
       method:'POST',
       headers: { 'Content-Type':'application/json', 'X-CSRF-TOKEN': CSRF },
@@ -594,11 +609,17 @@ function renderScore(payload, rubricCode){
   scLang.textContent    = num(s.language);
   scTotal.textContent   = num(s.total);
 
-  const rationales = []
+  // Collect any explanations that backend already returns
+  let rationales = []
     .concat(payload.rationales || [])
     .concat(payload.explanations || [])
     .concat(payload.criteria_explanations || [])
     .concat(payload.rubric_breakdown || []);
+
+  // If backend did NOT send any explanations, generate fallback ones
+  if (!rationales.length) {
+    rationales = buildFallbackRationales(s, rubricCode);
+  }
 
   rationaleList.innerHTML = '';
   if (rationales.length) {
@@ -608,8 +629,9 @@ function renderScore(payload, rubricCode){
       rationaleList.appendChild(li);
     }
   } else {
+    // Extremely rare: no scores and no rationales
     const li = document.createElement('li');
-    li.textContent = 'No detailed explanations returned by the API.';
+    li.textContent = 'No detailed explanations are available for this score.';
     rationaleList.appendChild(li);
   }
 
@@ -646,9 +668,53 @@ function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,
 function num(x){ return (x ?? '-'); }
 function humanSize(bytes){ const u=['B','KB','MB','GB']; let i=0,n=bytes||0; while(n>=1024&&i<u.length-1){n/=1024;i++;} return `${n.toFixed(1)} ${u[i]}`; }
 
+/* --- Fallback explanation helpers --- */
+function buildFallbackRationales(scores, rubricCode){
+  const out = [];
+  if (!scores) return out;
+
+  const mapping = {
+    Content: scores.content,
+    Communicative: scores.communicative ?? scores.communicative_achievement,
+    Organisation: scores.organisation,
+    Language: scores.language
+  };
+
+  Object.entries(mapping).forEach(([label, val])=>{
+    if (val === undefined || val === null || val === '-') return;
+    const n = Number(val);
+    if (Number.isNaN(n)) return;
+    out.push(makeBandExplanation(label, n, rubricCode));
+  });
+
+  if (scores.total !== undefined && scores.total !== null && scores.total !== '-') {
+    const t = Number(scores.total);
+    if (!Number.isNaN(t)) {
+      out.push(`Overall total: ${t}/20 — this reflects the combined performance across all criteria in the selected rubric.`);
+    }
+  }
+
+  return out;
+}
+
+function makeBandExplanation(label, score, rubricCode){
+  const rubricName = rubricCode || 'the selected rubric';
+  const base = bandTextForScore(score);
+  return `${label}: ${score}/5 — ${base} (according to ${rubricName}).`;
+}
+
+function bandTextForScore(score){
+  const s = Number(score);
+  if (s >= 5) return 'Excellent performance; fully meets the top band descriptors for this criterion';
+  if (s >= 4) return 'Good performance with only minor weaknesses; mostly matches the higher band descriptors';
+  if (s >= 3) return 'Adequate but uneven; some key expectations from the rubric are met while others are only partially achieved';
+  if (s >= 2) return 'Limited performance; several rubric expectations are weak or missing for this criterion';
+  if (s >= 1) return 'Very limited performance; most rubric expectations are not met';
+  return 'No credit for this criterion (0); the response does not reach the minimum rubric expectations';
+}
+
 /* =========================
    Image tools (stitch) + PDF preview
-   (slightly higher width & quality to help OCR a bit)
 ========================= */
 async function stitchImages(files){
   // Compress & equalize widths, then vertical stitch
@@ -745,17 +811,21 @@ async function handleTitleImage(e){
   const f = e.target.files?.[0]; if (!f) return;
   overlay.classList.add('show');
   try{
-    // ✅ Title 这边也统一转成 JPEG
+    // Title 统一转成 JPEG，并提示后端这是“题目/题干”模式
     const srcFile = await normalizeImageFile(f, 1600, 0.95);
     const fd = new FormData();
     fd.append('file', srcFile, srcFile.name || 'title.jpg');
-    // Optional hint for backend tuning:
-    // fd.append('mode', 'title');
+    fd.append('mode', 'title');
     const res = await fetch(ORIGIN + '/api/ocr', { method:'POST', headers: { 'X-CSRF-TOKEN': CSRF }, body: fd });
     const json = await res.json().catch(()=>({}));
-    const t = (json.text || json.extracted || json.ocr || '').trim();
-    if (t) titleEl.value = t.slice(0, 200);
-    else alert('Failed to extract title text. Please try a clearer photo or type manually.');
+    const raw = (json.text || json.extracted || json.ocr || '').trim();
+    if (raw) {
+      // 尽量保留完整题目内容，把多余空白折叠掉
+      const normalised = raw.replace(/\s+/g, ' ').trim();
+      titleEl.value = normalised;
+    } else {
+      alert('Failed to extract title text. Please try a clearer photo or type manually.');
+    }
   }catch(err){
     console.error(err); alert('Title OCR error.');
   }finally{
@@ -929,9 +999,9 @@ btnClearHistory.addEventListener('click', ()=>{
 function compressImage(dataURL, maxWidth=1600, quality=0.95){
   return new Promise((resolve,reject)=>{
     const img = new Image();
-    img.onload = ()=>{
-      const scale = Math.min(1, maxWidth / img.width);
-      const canvas = document.createElement('canvas');
+    img.onload = ()=>{ 
+      const scale = Math.min(1, maxWidth / img.width); 
+      const canvas = document.createElement('canvas'); 
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
       const ctx = canvas.getContext('2d'); 
