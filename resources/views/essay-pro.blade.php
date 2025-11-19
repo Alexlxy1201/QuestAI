@@ -69,10 +69,10 @@
           Take a photo or upload the essay question. OCR will try to capture the full question text here.
         </p>
 
-        {{-- Rubric --}}
+        {{-- Rubric selector (just for template picking) --}}
         <div class="mt-4">
           <label class="block text-sm font-medium text-gray-700 mb-1">
-            Rubric
+            Rubric template
           </label>
           <select
             id="rubric"
@@ -90,7 +90,7 @@
             </optgroup>
           </select>
           <p class="text-xs text-gray-400 mt-1">
-            Choose which part of the latest SPM/UASA writing rubric to use for scoring. The reference text below will update, and you can still edit it.
+            This dropdown only picks a template. The actual scoring will always use the text in “Rubric Reference” below (even if you edit it).
           </p>
         </div>
 
@@ -121,7 +121,7 @@
             <div id="thumbGrid" class="mt-2 grid grid-cols-6 gap-2"></div>
           </div>
 
-          {{-- Step 1 Actions: OCR only (no changes to text) --}}
+          {{-- Step 1 Actions --}}
           <div class="mt-4 flex items-center gap-3 flex-wrap">
             <button id="btnExtract" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">
               🧠 Extract Text (OCR)
@@ -138,7 +138,7 @@
         <textarea id="essayText" rows="16" placeholder="After OCR, the original text will appear here. You may freely edit it before analysis."
                   class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
 
-        {{-- Step 3 Actions: Analyze AFTER editing --}}
+        {{-- Step 3 Actions --}}
         <div class="mt-4 flex flex-wrap items-center gap-3">
           <button id="btnAnalyze" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700" disabled>
             📊 Analyze & Grade (AI)
@@ -151,12 +151,12 @@
       </div>
     </div>
 
-    {{-- Rubric reference --}}
+    {{-- Rubric reference (this is what AI uses) --}}
     <div class="mt-6">
       <label class="block text-sm font-medium text-gray-700 mb-1">Rubric Reference (editable)</label>
       <textarea id="rubricRef" rows="8" class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
       <p class="text-xs text-gray-400 mt-1">
-        You can still edit or paste your own rubric. Changing the dropdown above will replace this text with the chosen part.
+        This text is the actual marking rubric used by AI. You can edit it freely; changing the dropdown above will just replace it with another template.
       </p>
     </div>
 
@@ -207,7 +207,7 @@
       </div>
     </div>
 
-    {{-- Annotated Corrections (optional) --}}
+    {{-- Annotated Corrections --}}
     <div class="bg-white rounded-2xl border mt-6 p-4 hidden" id="annotCard">
       <div class="flex items-center justify-between">
         <h2 class="text-xl font-bold">Annotated Changes</h2>
@@ -331,7 +331,7 @@ const annotCard = $('annotCard'), origTextEl = $('origText'), corrTextEl = $('co
 const historyList = $('historyList'), histCount = $('histCount');
 
 // State
-let selectedFiles = []; // chosen files (images and/or single pdf)
+let selectedFiles = [];
 let lastOCRText = '';
 let history = [];
 try { history = JSON.parse(localStorage.getItem('essayProHistory') || '[]'); } catch (_) { history = []; }
@@ -464,14 +464,12 @@ ORGANISATION & LANGUAGE
 0: Below band 1.`
 };
 
-// set initial rubric text based on default selected value
+// apply initial template
 function applyRubricTemplateFromSelect() {
   const key = rubricEl.value;
   rubricRef.value = RUBRIC_TEMPLATES[key] || '';
 }
 applyRubricTemplateFromSelect();
-
-// when user changes rubric option, update reference text (still editable afterwards)
 rubricEl.addEventListener('change', applyRubricTemplateFromSelect);
 
 /* =========================
@@ -537,7 +535,7 @@ async function handleFiles(e){
 }
 
 /* =========================
-   Step 1: OCR only
+   Step 1: OCR
 ========================= */
 btnExtract.addEventListener('click', doOCR);
 
@@ -617,6 +615,7 @@ async function ocrSingle(file){
 
 /* =========================
    Step 3: Analyze AFTER editing
+   👉 Use rubricRef text as the true rubric
 ========================= */
 btnAnalyze.addEventListener('click', analyzeEdited);
 btnSuggest.addEventListener('click', suggestCorrections);
@@ -630,13 +629,18 @@ async function analyzeEdited(){
   btnAnalyze.disabled = true;
 
   try {
+    const rubricText  = rubricRef.value || '';    // 真正用于评分的 rubric
+    const rubricLabel = rubricEl.value || '';     // 仅作显示用（SPM — Part 1 等）
+
     const payload = {
       title: titleEl.value || '',
-      rubric: rubricEl.value || '',
-      rubric_ref: rubricRef.value || '',
+      rubric: rubricText,         // 确保后端如果看 rubric，就用这一段文字
+      rubric_ref: rubricText,     // 兼容已有实现：rubric_ref 也给同样内容
+      rubric_label: rubricLabel,  // 可选：后端如果想知道选的是哪一类（显示用）
       need_explanation: true,
       text
     };
+
     const res = await fetch(ORIGIN + '/api/grade', {
       method:'POST',
       headers: { 'Content-Type':'application/json', 'X-CSRF-TOKEN': CSRF },
@@ -645,14 +649,14 @@ async function analyzeEdited(){
     const json = await res.json().catch(()=>({}));
     if (!res.ok || !json.ok) throw new Error(json.error || 'Grade failed.');
 
-    renderScore(json, rubricEl.value);
+    renderScore(json, rubricLabel);
     analyzeStatus.textContent = '✅ Done.';
     window.__lastGrade = json;
 
     pushHistory({
       time: new Date().toLocaleString(),
       title: titleEl.value || '',
-      rubric: rubricEl.value || '',
+      rubric: rubricLabel || '',
       extracted: lastOCRText || '',
       corrected: text,
       explanations: (json.rationales || json.explanations || json.criteria_explanations || json.rubric_breakdown || [])
@@ -699,9 +703,9 @@ async function suggestCorrections(){
 /* =========================
    Score / Annotated / Utils
 ========================= */
-function renderScore(payload, rubricCode){
+function renderScore(payload, rubricLabel){
   resultCard.classList.remove('hidden');
-  badgeRubric.textContent = rubricCode || '-';
+  badgeRubric.textContent = rubricLabel || '-';
 
   const s = payload.scores || {};
   scContent.textContent = num(s.content);
@@ -717,7 +721,7 @@ function renderScore(payload, rubricCode){
     .concat(payload.rubric_breakdown || []);
 
   if (!rationales.length) {
-    rationales = buildFallbackRationales(s, rubricCode);
+    rationales = buildFallbackRationales(s, rubricLabel);
   }
 
   rationaleList.innerHTML = '';
@@ -766,7 +770,7 @@ function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,
 function num(x){ return (x ?? '-'); }
 function humanSize(bytes){ const u=['B','KB','MB','GB']; let i=0,n=bytes||0; while(n>=1024&&i<u.length-1){n/=1024;i++;} return `${n.toFixed(1)} ${u[i]}`; }
 
-function buildFallbackRationales(scores, rubricCode){
+function buildFallbackRationales(scores, rubricLabel){
   const out = [];
   if (!scores) return out;
 
@@ -781,23 +785,23 @@ function buildFallbackRationales(scores, rubricCode){
     if (val === undefined || val === null || val === '-') return;
     const n = Number(val);
     if (Number.isNaN(n)) return;
-    out.push(makeBandExplanation(label, n, rubricCode));
+    out.push(makeBandExplanation(label, n, rubricLabel));
   });
 
   if (scores.total !== undefined && scores.total !== null && scores.total !== '-') {
     const t = Number(scores.total);
     if (!Number.isNaN(t)) {
-      out.push(`Overall total: ${t}/20 — this reflects the combined performance across all criteria in the selected rubric.`);
+      out.push(`Overall total: ${t}/20 — this reflects the combined performance across all criteria in this rubric.`);
     }
   }
 
   return out;
 }
 
-function makeBandExplanation(label, score, rubricCode){
-  const rubricName = rubricCode || 'the selected rubric';
+function makeBandExplanation(label, score, rubricLabel){
+  const name = rubricLabel || 'the selected rubric';
   const base = bandTextForScore(score);
-  return `${label}: ${score}/5 — ${base} (according to ${rubricName}).`;
+  return `${label}: ${score}/5 — ${base} (according to ${name}).`;
 }
 
 function bandTextForScore(score){
@@ -1020,7 +1024,7 @@ function renderHistory(){
         ${escapeHTML(h.time)} — ${escapeHTML(h.title||'(No title)')}
       </summary>
       <div class="mt-2 text-sm text-gray-700 space-y-2">
-        <p><strong>Rubric:</strong> ${escapeHTML(h.rubric||'-')}</p>
+        <p><strong>Rubric label:</strong> ${escapeHTML(h.rubric||'-')}</p>
         ${h.extracted ? `<div><strong>Extracted:</strong><br>${escapeHTML(h.extracted)}</div>`:''}
         ${h.corrected ? `<div><strong>Edited:</strong><br>${escapeHTML(h.corrected)}</div>`:''}
         ${(h.explanations||[]).length ? `
@@ -1041,22 +1045,7 @@ function renderHistory(){
       const i = +btn.getAttribute('data-idx');
       const h = history[i]; if(!h) return;
       titleEl.value = h.title || '';
-      if (h.rubric) {
-        let has = false;
-        for (const opt of rubricEl.options) {
-          if (opt.value === h.rubric) { has = true; break; }
-        }
-        if (!has) {
-          const opt = document.createElement('option');
-          opt.value = h.rubric;
-          opt.textContent = h.rubric;
-          rubricEl.appendChild(opt);
-        }
-        rubricEl.value = h.rubric;
-      } else {
-        rubricEl.value = "SPM — Part 1";
-      }
-      // when loading history we do NOT auto-overwrite rubricRef (user may have customised);
+      // we keep current rubricRef; do not overwrite teacher's current rubric when loading history
       essayText.value = h.corrected || h.extracted || '';
       lastOCRText = h.extracted || '';
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1093,7 +1082,7 @@ btnClearHistory.addEventListener('click', ()=>{
   }
 });
 
-/* ===== helpers for images ===== */
+/* ===== image helpers ===== */
 async function normalizeImageFile(file, maxWidth=1600, quality=0.95){
   const dataURL = await readAsDataURL(file);
   const compressed = await compressImage(dataURL, maxWidth, quality).catch(()=>dataURL);
