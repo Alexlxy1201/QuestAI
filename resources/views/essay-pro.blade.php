@@ -339,29 +339,46 @@ renderHistory();
 
 // Default rubric text
 rubricRef.value = `SPM Writing
-
 Part 1 — Assessment scale (5/3/1/0):
-5: Content fully relevant; reader well informed; conveys straightforward ideas using an appropriate text type; uses simple linkers/few cohesive devices; basic vocabulary and simple grammar well controlled; errors do not impede understanding.
-3: Slight irrelevance/omission; reader generally informed; simple ideas expressed simply; relies on common linkers; basic vocabulary and simple grammar sometimes inaccurate and may affect understanding.
-1: Task may be misunderstood; reader minimally informed; mostly short, disconnected sentences; weak cohesion; vocabulary mainly isolated words/phrases; limited control of simple grammar. 0: Completely irrelevant.
+5: Content is fully relevant; readers are well informed; answer all the questions asked; conveys simple ideas using an appropriate text type and tone smoothly; uses simple linkers and at least one cohesive device; punctuations are used correctly and ideas are well-structured; basic vocabulary are used appropriately and uses simple grammatical forms with good control; errors are noticeable but meaning can still be determined.
+4: Performances shared features of Score 3 and 5
+3: Slight irrelevance/omission; misinterpreted one or two questions but readers are generally informed; simple ideas expressed simply; relies on common linkers and no cohesive device is used; use basic vocabulary and simple grammar with some degree of control; errors are sometimes inaccurate and may affect understanding.
+2: Performances shared features of Score 1 and 3
+1: Task may be misunderstood; readers are minimally informed; mostly short, disconnected sentences; ideas are simple but not always communicated successfully; weak cohesion; incorrect use of punctuation; vocabulary mainly isolated words/phrases; limited control of simple grammar. 0: Completely irrelevant.
 
 Part 2 — Assessment scale:
-5: Content fully relevant; reader well informed; appropriate text type and engaging; coherent organization with varied cohesion; fairly wide everyday vocabulary (occasional misuse of less common words); good control of simple and some complex grammar; errors do not hinder communication.
-3: Slight irrelevance/omission; reader generally informed; text type used adequately; mainly simple linkers with limited cohesion; fair control of vocabulary and grammar though errors occur. 0–1: Same as Part 1 low bands.
+5: Content fully relevant; reader well informed, answer all the questions appropriately; conveys straightforward ideas using an appropriate text type and tone smoothly; coherent organization with a variety of cohesive devices; fairly wide everyday vocabulary with occasional misuse of less common words; good control of simple and some complex grammar; errors do not hinder communication.
+4: Performances shared features of Score 3 and 5
+3: Slight irrelevance/omission; misinterpreted one or two questions but reader generally informed; conveys simple ideas using an appropriate text type and tone smoothly; use simple sentence connectors and some cohesive devices appropriately; use basic vocabulary and simple grammar with good control; errors are noticeable but meaning can still be determined.
+2: Performances shared features of Score 1 and 3
+1: Task may be misunderstood; readers are minimally informed; simple ideas expressed simply; relies on common linkers and no cohesive device is used; ; incorrect use of punctuation; use basic vocabulary and simple grammar with some degree of control; errors are sometimes inaccurate and may affect understanding.
+0: Content is totally irrelevant and any performance is below score 1.
 
 Part 3 — Assessment scale:
-5: Content fully relevant; purpose achieved; well organized with varied cohesion; wide vocabulary including some less common items; flexible use of simple + complex grammar with good control; only occasional slips.
-3: Slight irrelevance/omission; reader generally informed and engaged; fairly well organized with some variety of linking; reasonably wide vocabulary (occasional misuse of less common words); good control of simple and some complex grammar. 0–1: Same as Part 1 low bands.
+5: Content fully relevant and answered all the questions; communicative purpose achieved; complex ideas are delivered smoothly; well organized with a variety of cohesive devices that are used effectively; use wide vocabulary including some less common vocabulary correctly; flexible use of simple + complex grammar with good control; only occasional slips.
+4: Performances shared features of Score 3 and 5
+3: Slight irrelevance/omission; misinterpreted one or two questions but reader generally informed and engaged; conveys straightforward ideas using an appropriate text type and tone smoothly; coherent organization with a variety of cohesive devices; fairly wide everyday vocabulary with occasional misuse of less common words; good control of simple and some complex grammar; errors do not hinder communication.
+2: Performances shared features of Score 1 and 3
+1: Only manage to answer one sub-question; misinterpreted one or two questions but reader generally informed; conveys simple ideas using an appropriate text type and tone smoothly; use simple sentence connectors and some cohesive devices appropriately; use basic vocabulary and simple grammar with good control; errors are noticeable but meaning can still be determined.
+
 
 UASA / Form 3 Writing
-
 Part 1:
-5: Fully relevant; reader well informed; conveys straightforward ideas with an appropriate text type; uses simple linkers/few cohesive devices; good control of basic vocabulary and simple grammar (errors noticeable but not serious).
-3: Slight irrelevance/omission; reader generally informed; simple ideas in simple forms; relies on common linkers; basic vocabulary/grammar sometimes affect understanding. 1–0: Same as SPM Part 1 low bands.
+5: Content is fully relevant; readers are well informed; answer all the questions asked; conveys simple ideas using an appropriate text type and tone smoothly; uses simple linkers and at least one cohesive device; punctuations are used correctly and ideas are well-structured; basic vocabulary are used appropriately and uses simple grammatical forms with good control; errors are noticeable but meaning can still be determined.
+4: Performances shared features of Score 3 and 5
+3: Slight irrelevance/omission; misinterpreted one or two questions but readers are generally informed; simple ideas expressed simply; relies on common linkers and no cohesive device is used; use basic vocabulary and simple grammar with some degree of control; errors are sometimes inaccurate and may affect understanding.
+2: Performances shared features of Score 1 and 3
+1: Task may be misunderstood; readers are minimally informed; mostly short, disconnected sentences; ideas are simple but not always communicated successfully; weak cohesion; incorrect use of punctuation; vocabulary mainly isolated words/phrases; limited control of simple grammar. 0: Completely irrelevant.
 
 Part 2:
-5: Fully relevant; reader well informed; text type engages and informs; coherent and organized with some varied cohesion; fairly wide everyday vocabulary; good control of simple + some complex grammar; errors do not impede understanding.
-3: Slight irrelevance/omission; reader generally informed; text type adequate; mostly simple linkers/limited cohesion; basic vocabulary and simple grammar mostly accurate and understandable. 1–0: Same as above.`;
+5: Content fully relevant; reader well informed, answer all the questions appropriately; conveys straightforward ideas using an appropriate text type and tone smoothly; coherent organization with a variety of cohesive devices; fairly wide everyday vocabulary with occasional misuse of less common words; good control of simple and some complex grammar; errors do not hinder communication.
+4: Performances shared features of Score 3 and 5
+3: Slight irrelevance/omission; misinterpreted one or two questions but reader generally informed; conveys simple ideas using an appropriate text type and tone smoothly; use simple sentence connectors and some cohesive devices appropriately; use basic vocabulary and simple grammar with good control; errors are noticeable but meaning can still be determined.
+2: Performances shared features of Score 1 and 3
+1: Task may be misunderstood; readers are minimally informed; simple ideas expressed simply; relies on common linkers and no cohesive device is used; ; incorrect use of punctuation; use basic vocabulary and simple grammar with some degree of control; errors are sometimes inaccurate and may affect understanding.
+0: Content is totally irrelevant and any performance is below score 1.
+
+`;
 
 /* =========================
    File Selection
