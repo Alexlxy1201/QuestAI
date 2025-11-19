@@ -71,19 +71,27 @@
 
         {{-- Rubric --}}
         <div class="mt-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">Rubric</label>
-          <select id="rubric" class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-            <optgroup label="SPM">
-              <option value="SPM_P1">SPM — Part 1</option>
-              <option value="SPM_P2">SPM — Part 2</option>
-              <option value="SPM_P3">SPM — Part 3</option>
-            </optgroup>
-            <optgroup label="UASA">
-              <option value="UASA_P1">UASA — Part 1</option>
-              <option value="UASA_P2">UASA — Part 2</option>
-            </optgroup>
-          </select>
-          <p class="text-xs text-gray-400 mt-1">Scoring dimensions: Content · Communicative Achievement · Organisation · Language (0–5 each).</p>
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Rubric (editable)
+          </label>
+          <input
+            id="rubric"
+            type="text"
+            class="w-full rounded-xl border-gray-200 px-3 py-2 text-sm md:text-base focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            list="rubricPresets"
+            placeholder="e.g., SPM — Part 1, UASA — Part 2, or your own rubric name"
+            value="SPM — Part 1"
+          >
+          <datalist id="rubricPresets">
+            <option value="SPM — Part 1"></option>
+            <option value="SPM — Part 2"></option>
+            <option value="SPM — Part 3"></option>
+            <option value="UASA — Part 1"></option>
+            <option value="UASA — Part 2"></option>
+          </datalist>
+          <p class="text-xs text-gray-400 mt-1">
+            You can type any rubric name or code. Scoring dimensions are still: Content · Communicative Achievement · Organisation · Language (0–5 each).
+          </p>
         </div>
 
         {{-- Files --}}
@@ -957,7 +965,7 @@ function renderHistory(){
       const i = +btn.getAttribute('data-idx');
       const h = history[i]; if(!h) return;
       titleEl.value = h.title || '';
-      rubricEl.value = h.rubric || 'SPM_P1';
+      rubricEl.value = h.rubric || 'SPM — Part 1';
       essayText.value = h.corrected || h.extracted || '';
       lastOCRText = h.extracted || '';
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1001,9 +1009,9 @@ function compressImage(dataURL, maxWidth=1600, quality=0.95){
     const img = new Image();
     img.onload = ()=>{ 
       const scale = Math.min(1, maxWidth / img.width); 
-      const canvas = document.createElement('canvas'); 
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');  
+      canvas.width = Math.round(img.width * scale);  
+      canvas.height = Math.round(img.height * scale); 
       const ctx = canvas.getContext('2d'); 
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);  
       resolve(canvas.toDataURL('image/jpeg', quality)); 
