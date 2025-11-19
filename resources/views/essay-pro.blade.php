@@ -72,25 +72,25 @@
         {{-- Rubric --}}
         <div class="mt-4">
           <label class="block text-sm font-medium text-gray-700 mb-1">
-            Rubric (editable)
+            Rubric
           </label>
-          <input
+          <select
             id="rubric"
-            type="text"
             class="w-full rounded-xl border-gray-200 px-3 py-2 text-sm md:text-base focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            list="rubricPresets"
-            placeholder="e.g., SPM — Part 1, UASA — Part 2, or your own rubric name"
-            value="SPM — Part 1"
           >
-          <datalist id="rubricPresets">
-            <option value="SPM — Part 1"></option>
-            <option value="SPM — Part 2"></option>
-            <option value="SPM — Part 3"></option>
-            <option value="UASA — Part 1"></option>
-            <option value="UASA — Part 2"></option>
-          </datalist>
+            <option value="">Select exam &amp; part</option>
+            <optgroup label="SPM">
+              <option value="SPM — Part 1" selected>SPM — Part 1</option>
+              <option value="SPM — Part 2">SPM — Part 2</option>
+              <option value="SPM — Part 3">SPM — Part 3</option>
+            </optgroup>
+            <optgroup label="UASA">
+              <option value="UASA — Part 1">UASA — Part 1</option>
+              <option value="UASA — Part 2">UASA — Part 2</option>
+            </optgroup>
+          </select>
           <p class="text-xs text-gray-400 mt-1">
-            You can type any rubric name or code. Scoring dimensions are still: Content · Communicative Achievement · Organisation · Language (0–5 each).
+            Choose which part of the latest SPM/UASA writing rubric to use for scoring. The reference text below will update, and you can still edit it.
           </p>
         </div>
 
@@ -156,7 +156,7 @@
       <label class="block text-sm font-medium text-gray-700 mb-1">Rubric Reference (editable)</label>
       <textarea id="rubricRef" rows="8" class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
       <p class="text-xs text-gray-400 mt-1">
-        You can paste or edit the rubric here. A copy may be used to help generate clearer score explanations.
+        You can still edit or paste your own rubric. Changing the dropdown above will replace this text with the chosen part.
       </p>
     </div>
 
@@ -288,8 +288,8 @@ const CSRF    = document.querySelector('meta[name="csrf-token"]')?.getAttribute(
 const $ = (id)=>document.getElementById(id);
 
 // Inputs
-const titleEl = $('title');
-const rubricEl = $('rubric');
+const titleEl   = $('title');
+const rubricEl  = $('rubric');
 const essayText = $('essayText');
 const rubricRef = $('rubricRef');
 
@@ -335,56 +335,152 @@ let selectedFiles = []; // chosen files (images and/or single pdf)
 let lastOCRText = '';
 let history = [];
 try { history = JSON.parse(localStorage.getItem('essayProHistory') || '[]'); } catch (_) { history = []; }
-renderHistory();
 
-// Default rubric text
-rubricRef.value = `SPM Writing
-Part 1 — Assessment scale (5/3/1/0):
-5: Content is fully relevant; readers are well informed; answer all the questions asked; conveys simple ideas using an appropriate text type and tone smoothly; uses simple linkers and at least one cohesive device; punctuations are used correctly and ideas are well-structured; basic vocabulary are used appropriately and uses simple grammatical forms with good control; errors are noticeable but meaning can still be determined.
-4: Performances shared features of Score 3 and 5
-3: Slight irrelevance/omission; misinterpreted one or two questions but readers are generally informed; simple ideas expressed simply; relies on common linkers and no cohesive device is used; use basic vocabulary and simple grammar with some degree of control; errors are sometimes inaccurate and may affect understanding.
-2: Performances shared features of Score 1 and 3
-1: Task may be misunderstood; readers are minimally informed; mostly short, disconnected sentences; ideas are simple but not always communicated successfully; weak cohesion; incorrect use of punctuation; vocabulary mainly isolated words/phrases; limited control of simple grammar. 0: Completely irrelevant.
+/* =========================
+   Rubric templates per part
+========================= */
+const RUBRIC_TEMPLATES = {
+  "SPM — Part 1": `SPM English Writing – Paper 2 (Part 1 – Email / short communicative message, about 80–100 words)
 
-Part 2 — Assessment scale:
-5: Content fully relevant; reader well informed, answer all the questions appropriately; conveys straightforward ideas using an appropriate text type and tone smoothly; coherent organization with a variety of cohesive devices; fairly wide everyday vocabulary with occasional misuse of less common words; good control of simple and some complex grammar; errors do not hinder communication.
-4: Performances shared features of Score 3 and 5
-3: Slight irrelevance/omission; misinterpreted one or two questions but reader generally informed; conveys simple ideas using an appropriate text type and tone smoothly; use simple sentence connectors and some cohesive devices appropriately; use basic vocabulary and simple grammar with good control; errors are noticeable but meaning can still be determined.
-2: Performances shared features of Score 1 and 3
-1: Task may be misunderstood; readers are minimally informed; simple ideas expressed simply; relies on common linkers and no cohesive device is used; ; incorrect use of punctuation; use basic vocabulary and simple grammar with some degree of control; errors are sometimes inaccurate and may affect understanding.
-0: Content is totally irrelevant and any performance is below score 1.
+Criteria (0–5 each): Content, Communicative Achievement, Organisation, Language.
+Total: 20 marks.
 
-Part 3 — Assessment scale:
-5: Content fully relevant and answered all the questions; communicative purpose achieved; complex ideas are delivered smoothly; well organized with a variety of cohesive devices that are used effectively; use wide vocabulary including some less common vocabulary correctly; flexible use of simple + complex grammar with good control; only occasional slips.
-4: Performances shared features of Score 3 and 5
-3: Slight irrelevance/omission; misinterpreted one or two questions but reader generally informed and engaged; conveys straightforward ideas using an appropriate text type and tone smoothly; coherent organization with a variety of cohesive devices; fairly wide everyday vocabulary with occasional misuse of less common words; good control of simple and some complex grammar; errors do not hinder communication.
-2: Performances shared features of Score 1 and 3
-1: Only manage to answer one sub-question; misinterpreted one or two questions but reader generally informed; conveys simple ideas using an appropriate text type and tone smoothly; use simple sentence connectors and some cohesive devices appropriately; use basic vocabulary and simple grammar with good control; errors are noticeable but meaning can still be determined.
+CONTENT
+5: All required points are covered; content fully relevant to task; target reader fully informed.
+3: Most required points covered; some minor omission or slight irrelevance; reader generally informed.
+1: Little relevant content; serious omissions or misunderstanding of task; reader hardly informed.
+0: Below band 1.
 
+COMMUNICATIVE ACHIEVEMENT
+5: Email format and tone appropriate for audience and purpose; message clear, polite and engaging.
+3: Generally appropriate; some lapses in style/register but main purpose still clear.
+1: Inappropriate or confusing; purpose not clear; task only partly achieved.
+0: Below band 1.
 
-UASA / Form 3 Writing
-Part 1:
-5: Content is fully relevant; readers are well informed; answer all the questions asked; conveys simple ideas using an appropriate text type and tone smoothly; uses simple linkers and at least one cohesive device; punctuations are used correctly and ideas are well-structured; basic vocabulary are used appropriately and uses simple grammatical forms with good control; errors are noticeable but meaning can still be determined.
-4: Performances shared features of Score 3 and 5
-3: Slight irrelevance/omission; misinterpreted one or two questions but readers are generally informed; simple ideas expressed simply; relies on common linkers and no cohesive device is used; use basic vocabulary and simple grammar with some degree of control; errors are sometimes inaccurate and may affect understanding.
-2: Performances shared features of Score 1 and 3
-1: Task may be misunderstood; readers are minimally informed; mostly short, disconnected sentences; ideas are simple but not always communicated successfully; weak cohesion; incorrect use of punctuation; vocabulary mainly isolated words/phrases; limited control of simple grammar. 0: Completely irrelevant.
+ORGANISATION
+5: Clear opening/closing; ideas in logical order; uses basic linkers (and, but, because, so, then, also) effectively.
+3: Some organisation; ideas grouped but uneven; linking sometimes repetitive or inaccurate.
+1: Very little organisation; mostly isolated sentences.
+0: Below band 1.
 
-Part 2:
-5: Content fully relevant; reader well informed, answer all the questions appropriately; conveys straightforward ideas using an appropriate text type and tone smoothly; coherent organization with a variety of cohesive devices; fairly wide everyday vocabulary with occasional misuse of less common words; good control of simple and some complex grammar; errors do not hinder communication.
-4: Performances shared features of Score 3 and 5
-3: Slight irrelevance/omission; misinterpreted one or two questions but reader generally informed; conveys simple ideas using an appropriate text type and tone smoothly; use simple sentence connectors and some cohesive devices appropriately; use basic vocabulary and simple grammar with good control; errors are noticeable but meaning can still be determined.
-2: Performances shared features of Score 1 and 3
-1: Task may be misunderstood; readers are minimally informed; simple ideas expressed simply; relies on common linkers and no cohesive device is used; ; incorrect use of punctuation; use basic vocabulary and simple grammar with some degree of control; errors are sometimes inaccurate and may affect understanding.
-0: Content is totally irrelevant and any performance is below score 1.
+LANGUAGE
+5: Good control of simple grammar (present/past, simple tenses, pronouns); some attempts at longer sentences; basic vocabulary used appropriately; errors do not impede understanding.
+3: Adequate range of simple structures; frequent but mostly non-obstructive errors.
+1: Very limited range; frequent errors which often make meaning difficult.
+0: Below band 1.`,
 
-`;
+  "SPM — Part 2": `SPM English Writing – Paper 2 (Part 2 – Continuous writing, about 125–150 words)
+
+Same four criteria: Content, Communicative Achievement, Organisation, Language (0–5 each, total 20).
+
+CONTENT
+5: Fully answers the question, including all required parts; ideas developed with relevant details and examples.
+3: Main ideas present but development uneven; some points may be underdeveloped or partly addressed.
+1: Very few relevant ideas; task only minimally attempted.
+0: Below band 1.
+
+COMMUNICATIVE ACHIEVEMENT
+5: Text type (e.g. article, essay, narrative) and tone are consistently appropriate for the task and target reader.
+3: Generally appropriate; some sections feel too informal / too formal or not clearly aligned to the task.
+1: Style confusing or inconsistent; purpose not clear.
+0: Below band 1.
+
+ORGANISATION
+5: Clear paragraphing (introduction, body, ending); logical sequencing; variety of linking words/phrases.
+3: Some paragraphing and linking but may be repetitive; progression of ideas sometimes abrupt.
+1: Little sense of paragraphing; ideas not clearly ordered.
+0: Below band 1.
+
+LANGUAGE
+5: Reasonably wide everyday vocabulary; mix of simple and some complex sentences; errors present but do not seriously weaken communication.
+3: Limited but sufficient range; grammar and vocabulary errors sometimes affect clarity but overall meaning is understandable.
+1: Very limited vocabulary and grammar; errors frequently obscure meaning.
+0: Below band 1.`,
+
+  "SPM — Part 3": `SPM English Writing – Paper 2 (Part 3 – Extended writing, article / review / story, about 200 words or more)
+
+Criteria: Content, Communicative Achievement, Organisation, Language (0–5; total 20).
+
+CONTENT
+5: Fully relevant; all bullet points or guiding questions addressed; ideas are rich, developed and supported with details.
+3: Most points covered but development uneven; some ideas underdeveloped or repetitive.
+1: Limited or mostly irrelevant content; task weakly addressed.
+0: Below band 1.
+
+COMMUNICATIVE ACHIEVEMENT
+5: Clear sense of genre (article/review/story); tone and register suit the specified reader (e.g. school magazine); purpose fully achieved.
+3: Genre mostly clear but not always sustained; tone sometimes inconsistent.
+1: Genre or purpose unclear; task only partly fulfilled.
+0: Below band 1.
+
+ORGANISATION
+5: Coherent overall structure; effective beginning, development and ending; cohesive devices used flexibly (sequencing, referencing, contrast, cause & effect).
+3: Some organisational control; ideas generally linked but with occasional jumps or weak paragraphing.
+1: Poor organisation; ideas in a list-like or random order.
+0: Below band 1.
+
+LANGUAGE
+5: Fairly wide range of vocabulary (including some less common words); mix of simple and complex sentences with generally good control; errors occasional and do not hinder communication.
+3: Sufficient range for the task; errors in grammar and vocabulary noticeable but meaning usually clear.
+1: Very restricted range; frequent serious errors that make understanding difficult.
+0: Below band 1.`,
+
+  "UASA — Part 1": `UASA Lower Secondary Writing – Part 1 (short response / guided writing)
+
+Two combined scales are commonly used: 
+1) Content & Communicative Achievement (0–5)
+2) Organisation & Language (0–5)
+Total: 10 marks.
+
+CONTENT & COMMUNICATIVE ACHIEVEMENT
+5: All required content included; task fully completed; ideas clearly conveyed and appropriate for the intended reader.
+3: Most required points included; message usually clear though some parts may be brief or less relevant.
+1: Very little relevant content; task only minimally attempted.
+0: Below band 1.
+
+ORGANISATION & LANGUAGE
+5: Ideas flow logically; basic connectors and a few cohesive devices used (and, but, because, first, then, finally); simple grammar and vocabulary mostly accurate; errors do not prevent understanding.
+3: Some organisation but sometimes choppy; limited range of language; errors sometimes affect clarity but overall meaning still understandable.
+1: Weak organisation; very limited language; frequent errors often make understanding difficult.
+0: Below band 1.`,
+
+  "UASA — Part 2": `UASA Lower Secondary Writing – Part 2 (longer continuous writing)
+
+Same banded scales:
+1) Content & Communicative Achievement (0–5)
+2) Organisation & Language (0–5)
+Total: 10 marks (can be scaled according to paper).
+
+CONTENT & COMMUNICATIVE ACHIEVEMENT
+5: Fully answers the question; purpose and audience awareness clear throughout; ideas developed with some detail or examples.
+3: Main ideas present but development uneven; some required points may be brief or partly addressed.
+1: Limited or mostly off-task content; purpose unclear.
+0: Below band 1.
+
+ORGANISATION & LANGUAGE
+5: Clear paragraphing; logical sequencing of ideas; connectives used appropriately; vocabulary and grammar mostly accurate with some variety; occasional errors do not hinder meaning.
+3: Some paragraphing and linking but may be repetitive; language range limited though message generally clear.
+1: Little sense of paragraphing; many basic errors; difficult to follow.
+0: Below band 1.`
+};
+
+// set initial rubric text based on default selected value
+function applyRubricTemplateFromSelect() {
+  const key = rubricEl.value;
+  rubricRef.value = RUBRIC_TEMPLATES[key] || '';
+}
+applyRubricTemplateFromSelect();
+
+// when user changes rubric option, update reference text (still editable afterwards)
+rubricEl.addEventListener('change', applyRubricTemplateFromSelect);
 
 /* =========================
    File Selection
 ========================= */
-chooseButton.addEventListener('click',()=>fileInput.click());
-cameraButton.addEventListener('click',()=>cameraInput.click());
+renderHistory();
+
+chooseButton.addEventListener('click', ()=>fileInput.click());
+cameraButton.addEventListener('click', ()=>cameraInput.click());
 fileInput.addEventListener('change', handleFiles);
 cameraInput.addEventListener('change', handleFiles);
 
@@ -392,7 +488,6 @@ async function handleFiles(e){
   const files = Array.from(e.target.files || []);
   if(!files.length) return;
 
-  // Enforce: single PDF OR one/more images
   const pdfs = files.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test((f.name || '')));
   const imgs = files.filter(f => {
     const name = (f.name || '').toLowerCase();
@@ -405,7 +500,6 @@ async function handleFiles(e){
     return;
   }
 
-  // Size hint
   const total = files.reduce((s,f)=>s+f.size,0);
   const limit = pdfs.length ? 20*1024*1024 : 25*1024*1024;
   if (total > limit) {
@@ -418,7 +512,6 @@ async function handleFiles(e){
   thumbGrid.innerHTML = '';
   previewMeta.textContent = `Files: ${files.length} · Total: ${humanSize(total)}`;
 
-  // Reset UI enabling Step 1
   btnExtract.disabled = false;
   btnAnalyze.disabled = true;
   btnSuggest.disabled = true;
@@ -426,7 +519,6 @@ async function handleFiles(e){
   extractStatus.textContent = '';
 
   if (pdfs.length === 1) {
-    // Show simple PDF preview (first page)
     previewImg.classList.add('hidden');
     previewPdf.classList.remove('hidden');
     previewPdf.textContent = `PDF selected: ${pdfs[0].name}`;
@@ -434,7 +526,6 @@ async function handleFiles(e){
     return;
   }
 
-  // Images: show thumbnails
   for (const f of imgs) {
     const url = URL.createObjectURL(f);
     const im = document.createElement('img');
@@ -446,7 +537,7 @@ async function handleFiles(e){
 }
 
 /* =========================
-   Step 1: OCR only (no changes)
+   Step 1: OCR only
 ========================= */
 btnExtract.addEventListener('click', doOCR);
 
@@ -471,10 +562,8 @@ async function doOCR(){
     let text = '';
 
     if (pdfs.length === 1) {
-      // Send the PDF directly to OCR endpoint
       text = await ocrSingle(pdfs[0]);
     } else if (imgs.length > 0) {
-      // Either stitch and send once, or OCR each image and concatenate (no extra labels, no trims)
       if (stitchToggle.checked && imgs.length > 1) {
         const stitched = await stitchImages(imgs);
         showStitchedPreview(stitched);
@@ -488,13 +577,12 @@ async function doOCR(){
         for (const f of imgs) {
           const normalized = await normalizeImageFile(f);
           const t = await ocrSingle(normalized);
-          chunks.push(t); // keep as-is
+          chunks.push(t);
         }
-        text = chunks.join('\n\n'); // minimal separation only
+        text = chunks.join('\n\n');
       }
     }
 
-    // Keep original OCR output "as-is" (no trim, no decoration)
     lastOCRText = (text || '');
 
     if (!lastOCRText) {
@@ -503,10 +591,8 @@ async function doOCR(){
       return;
     }
 
-    // Put OCR text into editor for manual editing
     essayText.value = lastOCRText;
 
-    // Enable Step 3 after user has something to edit
     btnAnalyze.disabled = false;
     btnSuggest.disabled = false;
 
@@ -522,12 +608,10 @@ async function doOCR(){
 async function ocrSingle(file){
   const fd = new FormData();
   fd.append('file', file, file.name || 'upload.bin');
-  // Hint for backend: essay body OCR
   fd.append('mode', 'essay');
   const res = await fetch(ORIGIN + '/api/ocr', { method:'POST', headers: { 'X-CSRF-TOKEN': CSRF }, body: fd });
   const json = await res.json().catch(()=>({}));
   if (!res.ok) throw new Error('OCR error: ' + (json?.error || res.status));
-  // Return whichever field server uses; do not trim/modify
   return json.text ?? json.extracted ?? json.ocr ?? '';
 }
 
@@ -548,7 +632,7 @@ async function analyzeEdited(){
   try {
     const payload = {
       title: titleEl.value || '',
-      rubric: rubricEl.value,
+      rubric: rubricEl.value || '',
       rubric_ref: rubricRef.value || '',
       need_explanation: true,
       text
@@ -563,10 +647,8 @@ async function analyzeEdited(){
 
     renderScore(json, rubricEl.value);
     analyzeStatus.textContent = '✅ Done.';
-    // keep for export
     window.__lastGrade = json;
 
-    // Save to history
     pushHistory({
       time: new Date().toLocaleString(),
       title: titleEl.value || '',
@@ -593,7 +675,6 @@ async function suggestCorrections(){
   analyzeStatus.textContent = 'Requesting suggestions…';
 
   try {
-    // Use the "direct-correct" endpoint in TEXT mode (no file), so we correct what user edited
     const fd = new FormData();
     fd.append('text', text);
     fd.append('title', titleEl.value || '');
@@ -604,13 +685,8 @@ async function suggestCorrections(){
     const original = json.extracted || text;
     const corrected = json.corrected || json.extracted || text;
 
-    // show annotated panel
     renderAnnotations(original, corrected);
     analyzeStatus.textContent = '💡 Suggestions ready (see Annotated Changes).';
-
-    // Optionally apply corrected text to editor? Keep original for user's control.
-    // essayText.value = corrected;
-
   } catch (e) {
     console.error(e);
     analyzeStatus.textContent = '❌ Suggest failed.';
@@ -634,14 +710,12 @@ function renderScore(payload, rubricCode){
   scLang.textContent    = num(s.language);
   scTotal.textContent   = num(s.total);
 
-  // Collect any explanations that backend already returns
   let rationales = []
     .concat(payload.rationales || [])
     .concat(payload.explanations || [])
     .concat(payload.criteria_explanations || [])
     .concat(payload.rubric_breakdown || []);
 
-  // If backend did NOT send any explanations, generate fallback ones
   if (!rationales.length) {
     rationales = buildFallbackRationales(s, rubricCode);
   }
@@ -654,7 +728,6 @@ function renderScore(payload, rubricCode){
       rationaleList.appendChild(li);
     }
   } else {
-    // Extremely rare: no scores and no rationales
     const li = document.createElement('li');
     li.textContent = 'No detailed explanations are available for this score.';
     rationaleList.appendChild(li);
@@ -693,7 +766,6 @@ function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,
 function num(x){ return (x ?? '-'); }
 function humanSize(bytes){ const u=['B','KB','MB','GB']; let i=0,n=bytes||0; while(n>=1024&&i<u.length-1){n/=1024;i++;} return `${n.toFixed(1)} ${u[i]}`; }
 
-/* --- Fallback explanation helpers --- */
 function buildFallbackRationales(scores, rubricCode){
   const out = [];
   if (!scores) return out;
@@ -739,10 +811,9 @@ function bandTextForScore(score){
 }
 
 /* =========================
-   Image tools (stitch) + PDF preview
+   Image tools + PDF preview
 ========================= */
 async function stitchImages(files){
-  // Compress & equalize widths, then vertical stitch
   const pieces = [];
   for (const f of files) {
     const dataURL = await readAsDataURL(f);
@@ -815,17 +886,7 @@ async function renderPdfFirstPage(file){
 }
 
 /* =========================
-   👉 Normalize image file to JPEG (for camera / HEIC etc.)
-========================= */
-async function normalizeImageFile(file, maxWidth=1600, quality=0.95){
-  const dataURL = await readAsDataURL(file);
-  const compressed = await compressImage(dataURL, maxWidth, quality).catch(()=>dataURL);
-  const base = (file.name || 'image').replace(/\.[^.]+$/, '');
-  return dataURLtoFile(compressed, base + '.jpg');
-}
-
-/* =========================
-   Title Snap (OCR) — Take Photo + Upload
+   Title Snap OCR
 ========================= */
 cameraTitleButton.addEventListener('click', ()=>cameraTitleInput.click());
 uploadTitleButton.addEventListener('click', ()=>uploadTitleInput.click());
@@ -836,7 +897,6 @@ async function handleTitleImage(e){
   const f = e.target.files?.[0]; if (!f) return;
   overlay.classList.add('show');
   try{
-    // Title 统一转成 JPEG，并提示后端这是“题目/题干”模式
     const srcFile = await normalizeImageFile(f, 1600, 0.95);
     const fd = new FormData();
     fd.append('file', srcFile, srcFile.name || 'title.jpg');
@@ -845,7 +905,6 @@ async function handleTitleImage(e){
     const json = await res.json().catch(()=>({}));
     const raw = (json.text || json.extracted || json.ocr || '').trim();
     if (raw) {
-      // 尽量保留完整题目内容，把多余空白折叠掉
       const normalised = raw.replace(/\s+/g, ' ').trim();
       titleEl.value = normalised;
     } else {
@@ -982,11 +1041,25 @@ function renderHistory(){
       const i = +btn.getAttribute('data-idx');
       const h = history[i]; if(!h) return;
       titleEl.value = h.title || '';
-      rubricEl.value = h.rubric || 'SPM — Part 1';
+      if (h.rubric) {
+        let has = false;
+        for (const opt of rubricEl.options) {
+          if (opt.value === h.rubric) { has = true; break; }
+        }
+        if (!has) {
+          const opt = document.createElement('option');
+          opt.value = h.rubric;
+          opt.textContent = h.rubric;
+          rubricEl.appendChild(opt);
+        }
+        rubricEl.value = h.rubric;
+      } else {
+        rubricEl.value = "SPM — Part 1";
+      }
+      // when loading history we do NOT auto-overwrite rubricRef (user may have customised);
       essayText.value = h.corrected || h.extracted || '';
       lastOCRText = h.extracted || '';
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      // Enable analyze since text is present
       btnAnalyze.disabled = !(essayText.value || '').trim();
       btnSuggest.disabled = !(essayText.value || '').trim();
     };
@@ -1020,7 +1093,14 @@ btnClearHistory.addEventListener('click', ()=>{
   }
 });
 
-/* ===== helpers ===== */
+/* ===== helpers for images ===== */
+async function normalizeImageFile(file, maxWidth=1600, quality=0.95){
+  const dataURL = await readAsDataURL(file);
+  const compressed = await compressImage(dataURL, maxWidth, quality).catch(()=>dataURL);
+  const base = (file.name || 'image').replace(/\.[^.]+$/, '');
+  return dataURLtoFile(compressed, base + '.jpg');
+}
+
 function compressImage(dataURL, maxWidth=1600, quality=0.95){
   return new Promise((resolve,reject)=>{
     const img = new Image();
