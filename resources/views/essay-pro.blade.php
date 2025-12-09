@@ -132,10 +132,10 @@
     <div class="mt-6">
       <label class="block text-sm font-medium text-gray-700 mb-1">Rubric Reference (editable)</label>
       <textarea id="rubricRef" rows="8" class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
-      <p class="text-xs text-gray-400 mt-1">This stays local and is not sent to the backend unless you Analyze or Export.</p>
+      <p class="text-xs text-gray-400 mt-1">This stays local and is not sent to the backend.</p>
     </div>
 
-    {{-- Score --}}
+    {{-- Score (kept visible but will be filled when available) --}}
     <div class="bg-white rounded-2xl border mt-6 p-4 hidden" id="resultCard">
       <div class="flex items-center justify-between gap-4">
         <h2 class="text-xl font-bold">AI Score</h2>
@@ -310,7 +310,7 @@ let history = [];
 try { history = JSON.parse(localStorage.getItem('essayProHistory') || '[]'); } catch (_) { history = []; }
 renderHistory();
 
-// Default rubric text — USING YOUR ORIGINAL RUBRIC (do not modify)
+// Default rubric text — DO NOT MODIFY the rubric content (user requested original rubric)
 rubricRef.value = `SPM Writing
 Part 1 — Assessment scale (5/3/1/0):
 5: Content is fully relevant; readers are well informed; answer all the questions asked; conveys simple ideas using an appropriate text type and tone smoothly; uses simple linkers and at least one cohesive device; punctuations are used correctly and ideas are well-structured; basic vocabulary are used appropriately and uses simple grammatical forms with good control; errors are noticeable but meaning can still be determined.
@@ -352,17 +352,15 @@ Part 2:
 `;
 
 /* =========================
-   UTIL: update action buttons based on editor content
-   -> ensures Analyze & Suggest are enabled when user types directly
+   Utility: enable Analyze when user types/pastes into essayText (no OCR required)
 ========================= */
 function updateActionButtons(){
   const hasText = (essayText.value || '').trim().length > 0;
-  // If there's text (either typed or from OCR), allow analyze & suggest
   btnAnalyze.disabled = !hasText;
   btnSuggest.disabled = !hasText;
 }
+// enable listening for input
 essayText.addEventListener('input', updateActionButtons);
-// Also initialize on load (in case of prefilled content)
 document.addEventListener('DOMContentLoaded', updateActionButtons);
 
 /* =========================
@@ -401,7 +399,6 @@ async function handleFiles(e){
 
   // Reset UI enabling Step 1
   btnExtract.disabled = false;
-  // keep analyze/suggest controlled by updateActionButtons (they remain disabled until text present)
   analyzeStatus.textContent = '';
   extractStatus.textContent = '';
 
@@ -482,6 +479,10 @@ async function doOCR(){
     essayText.value = lastOCRText;
     updateActionButtons();
 
+    // Enable Step 3 after user has something to edit
+    btnAnalyze.disabled = false;
+    btnSuggest.disabled = false;
+
     extractStatus.textContent = '✅ OCR complete. Original text placed in the editor.';
   } catch (err) {
     console.error(err);
@@ -502,16 +503,9 @@ async function ocrSingle(file){
 }
 
 /* =========================
-   Step 3: Analyze AFTER editing
-   (replaced with robust payload + window.__lastGrade saving)
+   Robust parse for plain-text/HTML server responses
+   (attempt to extract /5 /20 scores and rationales)
 ========================= */
-btnAnalyze.addEventListener('click', analyzeEdited);
-btnSuggest.addEventListener('click', suggestCorrections);
-/* =========================
-   Helper: parse server text/html into structured grade object
-   - Accepts rawText (string) possibly containing full HTML
-   - Returns object: { scores: {content, communicative, organisation, language, total}, rationales: [...], suggestions: [...] , raw_text }
-*/
 function parseServerResponse(rawText){
   const out = {
     scores: { content: null, communicative: null, organisation: null, language: null, total: null },
@@ -522,30 +516,23 @@ function parseServerResponse(rawText){
 
   if(!rawText) return out;
 
-  // If HTML, extract visible text using DOMParser for safer stripping
+  // Try to convert HTML -> visible text safely
   let plain;
   try {
     const dp = new DOMParser();
     const doc = dp.parseFromString(rawText, 'text/html');
-    // Remove scripts/styles content
     doc.querySelectorAll('script,style,noscript').forEach(n => n.remove());
     plain = doc.body ? doc.body.textContent || '' : rawText;
   } catch(e){
-    // fallback to simple strip
     plain = rawText.replace(/<\/?[^>]+(>|$)/g, '');
   }
   plain = (plain || '').replace(/\r/g,'').replace(/\t/g,' ').trim();
 
-  // Split into lines and collapse multi-space
   const lines = plain.split('\n').map(l=> l.replace(/\s+/g,' ').trim()).filter(Boolean);
-
-  // 1) Try to extract explicit "Content: X/5" style patterns
   const joinAll = lines.join('\n');
 
   const findScore = (text, names) => {
-    // names: array of possible names (regex)
     for(const n of names){
-      // examples: "Content: 3/5", "Content — 3/5", "Content 3/5", "Content: 3 — 0–5", "Content: 3"
       const re1 = new RegExp(n + '\\s*[:\\-–—]?\\s*(\\d)\\s*\\/\\s*5', 'i');
       const re2 = new RegExp(n + '\\s*[:\\-–—]?\\s*(\\d)\\s*(?:$|\\s|\\W)', 'i');
       const m1 = text.match(re1);
@@ -564,12 +551,11 @@ function parseServerResponse(rawText){
   out.scores.organisation = findScore(joinAll, ['Organisation','organization','Organisation','Organisation:','Organisation']);
   out.scores.language = findScore(joinAll, ['Language','language','Language:']);
 
-  // Try total: look for "Total: 12/20" or "Overall total: 12/20" or "/20"
   const mTotal = joinAll.match(/(?:Total|Overall total|Overall|Overall score)\s*[:\-–—]?\s*(\d{1,2})\s*\/\s*20/i) ||
                  joinAll.match(/(\d{1,2})\s*\/\s*20/);
   if(mTotal) out.scores.total = Number(mTotal[1]);
 
-  // If we didn't find individual criterion scores but find repeated "/5" tokens, try to assign in order
+  // Fallback: find all /5 occurrences and map to criteria order if four found
   if([out.scores.content, out.scores.communicative, out.scores.organisation, out.scores.language].every(x=> x === null)){
     const all5 = Array.from(joinAll.matchAll(/(\d)\/5/g)).map(m=>Number(m[1]));
     if(all5.length >= 4){
@@ -578,38 +564,30 @@ function parseServerResponse(rawText){
       out.scores.organisation = all5[2];
       out.scores.language = all5[3];
       if(!out.scores.total){
-        const sum = all5.slice(0,4).reduce((a,b)=>a+b,0);
-        out.scores.total = sum;
+        out.scores.total = all5.slice(0,4).reduce((a,b)=>a+b,0);
       }
     }
   }
 
-  // 2) Extract rationales: lines that start with criterion name OR lines containing "—" and short explanation
+  // Collect rationales: lines that start with criterion name or bullet points or lines with /5 or keywords
   const rationaleCandidates = [];
   for(const line of lines){
-    // if line starts with "Content" or "Communicative" etc, capture it
     if(/^(Content|Communicative|Organisation|Organisation|Language|Overall|Overall total)\b/i.test(line)){
       rationaleCandidates.push(line);
       continue;
     }
-    // also include lines that look like "• ..." or start with dash
-    if(/^[\u2022\-\*]\s+/.test(line) || /^•\s+/.test(line) || /^[\d]+\.\s+/.test(line)){
+    if(/^[\u2022\-\*]\s+/.test(line) || /^[\d]+\.\s+/.test(line)){
       rationaleCandidates.push(line);
       continue;
     }
-    // include short explanatory fragments that contain "/5" or "/20"
     if(/\/5\b|\/20\b/.test(line)) rationaleCandidates.push(line);
-    // include lines that are medium length and contain keywords from rubric
     if(line.length>30 && /(vocab|vocabulary|grammar|cohesion|cohesive|organis|communicat|relevant|inform)/i.test(line)) rationaleCandidates.push(line);
   }
-  // dedupe and limit
   out.rationales = Array.from(new Set(rationaleCandidates)).slice(0,60);
 
-  // 3) Suggestions: try to find "Suggestion" or "Revision Suggestions" block
-  const suggestionLines = lines.filter(l => /suggestion|revise|revision|improv|improve|try to|consider|avoid/i.test(l));
+  const suggestionLines = lines.filter(l => /suggestion|revise|revision|improv|improve|try to|consider|avoid|should|might|could/i.test(l));
   out.suggestions = Array.from(new Set(suggestionLines)).slice(0,40);
 
-  // 4) If nothing found for rationales, fallback to first 6 lines as explanation
   if(out.rationales.length === 0){
     out.rationales = lines.slice(0,6);
   }
@@ -618,9 +596,12 @@ function parseServerResponse(rawText){
 }
 
 /* =========================
-   Robust analyzeEdited() that handles JSON, plain text, or full HTML pages
-   Replace existing analyzeEdited with this function
+   Analyze: robust handler for JSON OR plain text/HTML
+   Replaces simpler analyzeEdited implementation
 ========================= */
+btnAnalyze.addEventListener('click', analyzeEdited);
+btnSuggest.addEventListener('click', suggestCorrections);
+
 async function analyzeEdited(){
   const text = (essayText.value || '').trim();
   if (!text) return alert('Empty text. Please OCR or paste/type text, then analyze.');
@@ -632,13 +613,12 @@ async function analyzeEdited(){
   try {
     const payload = {
       title: titleEl.value || '',
-      rubric_code: rubricEl.value,
+      rubric_code: rubricEl.value || '',
       rubric_text: rubricRef.value || '',
       text,
       prompt_instructions: "Use rubric_text verbatim as the scoring rules. Do NOT paraphrase the rubric. Return structured JSON with scores, rationales, suggestions and (if possible) inline_diff_html. If unable to return JSON, plain text or HTML summary is acceptable."
     };
 
-    // send request
     const controller = new AbortController();
     const timeoutMs = 45_000;
     const tid = setTimeout(()=>controller.abort(), timeoutMs);
@@ -652,10 +632,8 @@ async function analyzeEdited(){
 
     clearTimeout(tid);
 
-    // read response as text (covers JSON, plain text, HTML)
     const resText = await res.text().catch(()=>null);
 
-    // If response is empty and status OK, warn
     if((!resText || !resText.trim()) && res.ok){
       analyzeStatus.textContent = '❌ Analyze returned empty body.';
       window.__lastGrade = { raw_text: '' };
@@ -663,12 +641,11 @@ async function analyzeEdited(){
       return;
     }
 
-    // Try parse JSON first
     let json = null;
     try { json = resText ? JSON.parse(resText) : null; } catch(e){ json = null; }
 
     if(json && (typeof json === 'object')){
-      // structured — render as usual (renderScore expects payload shape)
+      // Structured JSON: use it directly
       window.__lastGrade = json;
       renderScore(json, rubricEl.value);
       analyzeStatus.textContent = '✅ Done (parsed JSON).';
@@ -683,20 +660,17 @@ async function analyzeEdited(){
       return;
     }
 
-    // Not JSON — try to parse text/html to extract scores & rationales
+    // Not JSON — parse plain/HTML text
     const parsed = parseServerResponse(resText || '');
 
-    // Build payload shape that renderScore can consume
     const payloadLike = {
       scores: parsed.scores,
       rationales: parsed.rationales,
-      suggestions: parsed.suggestions
+      suggestions: parsed.suggestions,
+      inline_diff_html: ''
     };
-
-    // save raw text as backup for export/debug
     payloadLike.raw_text = parsed.raw_text;
 
-    // render
     window.__lastGrade = payloadLike;
     renderScore(payloadLike, rubricEl.value);
 
@@ -724,8 +698,9 @@ async function analyzeEdited(){
   }
 }
 
-
-
+/* =========================
+   Suggest Corrections (existing behavior)
+========================= */
 async function suggestCorrections(){
   const text = (essayText.value || '').trim();
   if (!text) return alert('Empty text. Nothing to suggest.');
@@ -734,23 +709,18 @@ async function suggestCorrections(){
   analyzeStatus.textContent = 'Requesting suggestions…';
 
   try {
-    // Use the "direct-correct" endpoint in TEXT mode (no file), so we correct what user edited
     const fd = new FormData();
     fd.append('text', text);
     fd.append('title', titleEl.value || '');
     const res = await fetch(ORIGIN + '/api/essay/direct-correct', { method:'POST', headers:{ 'X-CSRF-TOKEN': CSRF }, body: fd });
     const json = await res.json().catch(()=>({}));
-    if (!res.ok) throw new Error(json.error || 'Suggest failed.');
+    if (!res.ok || !json.ok) throw new Error(json.error || 'Suggest failed.');
 
     const original = json.extracted || text;
     const corrected = json.corrected || json.extracted || text;
 
-    // show annotated panel
     renderAnnotations(original, corrected);
     analyzeStatus.textContent = '💡 Suggestions ready (see Annotated Changes).';
-
-    // Optionally apply corrected text to editor? Keep original for user's control.
-    // essayText.value = corrected; // <— keep commented to respect manual confirmation
 
   } catch (e) {
     console.error(e);
@@ -762,18 +732,13 @@ async function suggestCorrections(){
 }
 
 /* =========================
-   Score / Annotated / Utils
-   (renderScore now robust and flexible)
+   Score / Annotated / Utils (renderScore robust)
 ========================= */
 function renderScore(payload, rubricCode){
-  if (!payload) payload = {};
   resultCard.classList.remove('hidden');
   badgeRubric.textContent = rubricCode || '-';
 
-  // Try multiple shapes for scores:
-  const scores = payload.scores || payload.score_map || payload.score || payload.summary || {};
-
-  // helper to read number-like fields from many possible names
+  const scoresObj = payload.scores || payload.score_map || payload.score || payload.summary || {};
   const pick = (obj, names) => {
     for (const n of names) {
       if (obj == null) continue;
@@ -782,13 +747,12 @@ function renderScore(payload, rubricCode){
     return null;
   };
 
-  const contentScore = pick(scores, ['content','Content','c','content_score','score_content']);
-  const commScore    = pick(scores, ['communicative','communicative_achievement','comm','communicativeAchievement','communicative_score']);
-  const orgScore     = pick(scores, ['organisation','organization','org','organisation_score','organisation_score']);
-  const langScore    = pick(scores, ['language','lang','language_score']);
-  const totalScore   = pick(scores, ['total','overall','total_score','score_total','sum']);
+  const contentScore = pick(scoresObj, ['content','Content','c','content_score','score_content']);
+  const commScore    = pick(scoresObj, ['communicative','communicative_achievement','comm','communicative_score','communicative']);
+  const orgScore     = pick(scoresObj, ['organisation','organization','org','organisation_score','organisation']);
+  const langScore    = pick(scoresObj, ['language','lang','language_score']);
+  const totalScore   = pick(scoresObj, ['total','overall','total_score','score_total','sum']);
 
-  // If payload has top-level total or overall
   const fallbackTotal = pick(payload, ['total','overall','score','score_total','total_score']);
 
   scContent.textContent = (contentScore ?? '-');
@@ -797,7 +761,6 @@ function renderScore(payload, rubricCode){
   scLang.textContent    = (langScore ?? '-');
   scTotal.textContent   = (totalScore ?? fallbackTotal ?? '-');
 
-  // Now extract rationale/explanations with flexible keys
   const rationales = []
     .concat(payload.rationales || [])
     .concat(payload.explanations || [])
@@ -814,20 +777,12 @@ function renderScore(payload, rubricCode){
       rationaleList.appendChild(li);
     }
   } else {
-    // Try building per-criterion messages if available
-    const tryCriteria = [];
-    const tryContent = pick(payload, ['content_explanation','content_rationale','rationale_content']);
-    if (tryContent) tryCriteria.push(`Content: ${tryContent}`);
-    const tryComm = pick(payload, ['communicative_explanation','communicative_rationale']);
-    if (tryComm) tryCriteria.push(`Communicative: ${tryComm}`);
-    const tryOrg = pick(payload, ['organisation_explanation','organisation_rationale','organization_explanation']);
-    if (tryOrg) tryCriteria.push(`Organisation: ${tryOrg}`);
-    const tryLang = pick(payload, ['language_explanation','language_rationale']);
-    if (tryLang) tryCriteria.push(`Language: ${tryLang}`);
-
-    if (tryCriteria.length) {
-      for (const t of tryCriteria) {
-        const li = document.createElement('li'); li.textContent = t;
+    // fallback: if payload.raw_text exists, display first lines
+    const raw = payload.raw_text || payload.raw_text_stripped || '';
+    if (raw) {
+      const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean).slice(0,8);
+      for(const ln of lines){
+        const li = document.createElement('li'); li.textContent = ln;
         rationaleList.appendChild(li);
       }
     } else {
@@ -837,7 +792,6 @@ function renderScore(payload, rubricCode){
     }
   }
 
-  // Suggestions
   suggestions.innerHTML = '';
   const suggs = []
     .concat(payload.suggestions || [])
@@ -855,19 +809,14 @@ function renderScore(payload, rubricCode){
     suggestions.appendChild(li);
   }
 
-  // If server provided inline diff HTML, populate annotated panel
+  // Inline diff: if provided by server, inject and show annotated panel
   const inlineHtml = payload.inline_diff_html || payload.inline_diff || '';
   if (inlineHtml && diffHtmlEl) {
     diffHtmlEl.innerHTML = inlineHtml;
     annotCard.classList.remove('hidden');
-    // also populate orig/corr if provided
     if (payload.original_text) origTextEl.textContent = payload.original_text;
     if (payload.corrected_text) corrTextEl.textContent = payload.corrected_text;
-  } else {
-    // keep existing annotated panel if user already ran suggestions (no-op)
   }
-
-  // Make sure export will pick up this payload
   window.__lastGrade = payload;
 }
 
@@ -901,7 +850,6 @@ function humanSize(bytes){ const u=['B','KB','MB','GB']; let i=0,n=bytes||0; whi
    Image tools (stitch) + PDF preview
 ========================= */
 async function stitchImages(files){
-  // Compress & equalize widths, then vertical stitch
   const pieces = [];
   for (const f of files) {
     const dataURL = await readAsDataURL(f);
@@ -996,8 +944,7 @@ cameraTitleInput.addEventListener('change', async (e)=>{
 });
 
 /* =========================
-   DOCX Export
-   -> enhanced payload: inline diff, suggestions, explanations, scores, rubric_text ...
+   DOCX Export (include inline diff & revision suggestions)
 ========================= */
 btnExportDocx.addEventListener('click', async (ev)=>{
   ev.preventDefault();
@@ -1009,22 +956,17 @@ btnExportDocx.addEventListener('click', async (ev)=>{
     const corrected = (essayText.value || '').trim();
     if (!corrected) { alert('Nothing to export.'); return; }
 
-    // get rationales + suggestions from DOM
     const criterion_explanations = Array.from(document.querySelectorAll('#rationaleList li')).map(li => li.textContent).filter(Boolean);
     const revision_suggestions = Array.from(document.querySelectorAll('#suggestions li')).map(li => li.textContent).filter(Boolean);
 
-    // inline diff HTML (sanitized-ish): use innerHTML of diffHtml
     const inline_diff_html = (diffHtmlEl && diffHtmlEl.innerHTML) ? diffHtmlEl.innerHTML : '';
 
-    // annotated original / corrected (from UI)
     const original_text = (origTextEl && origTextEl.textContent) ? origTextEl.textContent : (lastOCRText || '');
     const corrected_text = corrected;
 
-    // scores — best-effort from last grade object
     const last = window.__lastGrade || {};
     const scores = last.scores || last.score_map || last.score || { content: null, communicative: null, organisation: null, language: null, total: null };
 
-    // full payload
     const payload = {
       title: (titleEl.value || 'Essay Report').slice(0, 200),
       rubric_code: rubricEl.value || '',
@@ -1095,7 +1037,7 @@ btnExportDocx.addEventListener('click', async (ev)=>{
 });
 
 /* =========================
-   Local History
+   Local History (same as before)
 ========================= */
 function pushHistory(item){
   history.unshift(item);
@@ -1135,9 +1077,10 @@ function renderHistory(){
       rubricEl.value = h.rubric || 'SPM_P1';
       essayText.value = h.corrected || h.extracted || '';
       lastOCRText = h.extracted || '';
-      updateActionButtons();
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      // Enable analyze since text is present
+      btnAnalyze.disabled = !(essayText.value || '').trim();
+      btnSuggest.disabled = !(essayText.value || '').trim();
+      updateActionButtons();
     };
   });
   historyList.querySelectorAll('.btnDelete').forEach(btn=>{
