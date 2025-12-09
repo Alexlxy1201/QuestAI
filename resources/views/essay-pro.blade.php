@@ -693,7 +693,10 @@ function makeAnnotatedDiff(a, b){
   }
   while(i < at.length){ html += `<del>${escapeHTML(at[i++])}</del>`; }
   while(j < bt.length){ html += `<ins>${escapeHTML(bt[j++])}</ins>`; }
-  return html;
+  // join tokens with single spaces for cleaner inline rendering
+  // tokens already include whitespace pieces; to avoid doubling, collapse sequences of multiple spaces
+  // here we simply return the raw html (tokens include whitespace pieces that preserve spacing in browser)
+  return html.replace(/\s+/g, ' ');
 }
 
 function tokenize(s){ const re=/[A-Za-z0-9’'’-]+|\s+|[^\sA-Za-z0-9]/g; const out=[]; let m; while((m=re.exec(s))){ out.push(m[0]); } return out.length?out:[s]; }
@@ -856,7 +859,7 @@ async function handleTitleImage(e){
 }
 
 /* =========================
-   DOCX Export (changed: include scores + diffHtml; no "Revision Suggestions" in DOCX)
+   DOCX Export (changed: include front-end diffHtml)
 ========================= */
 btnExportDocx.addEventListener('click', async (ev)=>{
   ev.preventDefault();
@@ -890,9 +893,10 @@ btnExportDocx.addEventListener('click', async (ev)=>{
 
     const suggestionsArr = Array.from(document.querySelectorAll('#suggestions li')).map(li => li.textContent);
 
-    // inline diff: prefer current diffHtml if present, otherwise generate from extracted/corrected client-side
+    // inline diff: prefer current client-side diffHtml if present
     let diffHtml = diffHtmlEl.innerHTML && diffHtmlEl.innerHTML.trim() ? diffHtmlEl.innerHTML : '';
     if (!diffHtml) {
+      // fallback: build simple diff from extracted/corrected
       diffHtml = makeAnnotatedDiff(extracted || '', corrected || '');
     }
 
