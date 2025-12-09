@@ -1081,6 +1081,7 @@ btnClearHistory.addEventListener('click', ()=>{
     renderHistory();
   }
 });
+   
 
 /* ===== image helpers ===== */
 async function normalizeImageFile(file, maxWidth=1600, quality=0.95){
