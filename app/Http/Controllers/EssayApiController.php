@@ -266,7 +266,8 @@ PROMPT;
     }
 
     /**
-     * 导出完整报告 DOCX（使用前端 diffHtml；移除 Revision Suggestions）
+     * 导出完整报告 DOCX（含 AI Score, Explanations, InlineDiff 自动生成）
+     * NOTE: Revision Suggestions section removed per request.
      */
     public function exportDocx(Request $request)
     {
@@ -278,13 +279,11 @@ PROMPT;
             $corrected = trim($request->input('corrected', ''));
             $explanations = $request->input('explanations', []);
             $suggestions = $request->input('suggestions', []);
-            $inlineDiff = (string)$request->input('diffHtml', '');
+            $inlineDiff = $request->input('diffHtml', '');
 
-            // Prefer front-end diffHtml as-is. If empty, fallback to internal diff.
-            if (trim($inlineDiff) === '') {
-                if ($extracted !== '' || $corrected !== '') {
-                    $inlineDiff = $this->makeInlineDiff($extracted, $corrected);
-                }
+            // If inlineDiff not provided, generate one from extracted & corrected
+            if (empty(trim((string)$inlineDiff)) && ($extracted !== '' || $corrected !== '')) {
+                $inlineDiff = $this->makeInlineDiff($extracted, $corrected);
             }
 
             $phpWord = new PhpWord();
@@ -301,20 +300,61 @@ PROMPT;
             if ($rubric) $section->addText("Rubric: {$rubric}", ['italic' => true, 'size' => 11]);
             $section->addTextBreak(1);
 
-            // NOTE: Per request, we do not include a revision suggestions section in export.
+            $scores = array_merge([
+                'content' => null,
+                'communicative' => null,
+                'organisation' => null,
+                'language' => null,
+                'total' => null
+            ], (array)$scores);
 
-            // Inline Diff
+            $table = $section->addTable([
+                'borderSize' => 6,
+                'borderColor' => '999999',
+                'alignment' => JcTable::CENTER,
+                'cellMargin' => 80
+            ]);
+            $table->addRow();
+            $table->addCell(3000)->addText('Criterion', ['bold' => true]);
+            $table->addCell(1000)->addText('Score', ['bold' => true]);
+            $table->addCell(1000)->addText('Range', ['bold' => true]);
+
+            $criteria = [
+                'Content' => $scores['content'],
+                'Communicative' => $scores['communicative'],
+                'Organisation' => $scores['organisation'],
+                'Language' => $scores['language'],
+                'Total' => $scores['total'],
+            ];
+
+            foreach ($criteria as $key => $val) {
+                $table->addRow();
+                $table->addCell(3000)->addText($key);
+                $table->addCell(1000)->addText($val !== null ? (string)$val : '-');
+                $table->addCell(1000)->addText($key === 'Total' ? '/20' : '0–5');
+            }
+
+            $section->addTextBreak(1);
+
+            $section->addText("Criterion Explanations", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
+            if (empty($explanations)) {
+                $section->addText("No detailed explanations returned by the API.", ['italic' => true]);
+            } else {
+                foreach ($explanations as $line) $section->addListItem(strip_tags((string)$line), 0, ['size' => 11]);
+            }
+            $section->addTextBreak(1);
+
+            // NOTE: Revision Suggestions section removed per request
+
             $section->addText("Inline Diff", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
             if ($inlineDiff) {
-                // Wrap in a div with inline style to help Word rendering
-                $safe = '<div style="line-height:1.35;font-family:Calibri;font-size:11pt;">' . $inlineDiff . '</div>';
-                Html::addHtml($section, $safe, false, false);
+                // Html::addHtml expects safe HTML; we already output <ins>/<del>
+                Html::addHtml($section, $inlineDiff, false, false);
             } else {
                 $section->addText("No inline diff data available.", ['italic' => true]);
             }
             $section->addTextBreak(1);
 
-            // Original & Corrected
             $section->addText("Original Essay", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
             $section->addText($extracted ?: '-', ['size' => 11]);
             $section->addTextBreak(1);
@@ -322,14 +362,6 @@ PROMPT;
             $section->addText("Corrected Essay", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
             $section->addText($corrected ?: '-', ['size' => 11]);
             $section->addTextBreak(1);
-
-            if (!empty($explanations)) {
-                $section->addText("Explanations", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
-                foreach ($explanations as $line) {
-                    $section->addListItem(strip_tags((string)$line), 0, ['size' => 11]);
-                }
-                $section->addTextBreak(1);
-            }
 
             return response()->streamDownload(function () use ($phpWord) {
                 IOFactory::createWriter($phpWord, 'Word2007')->save('php://output');
@@ -383,7 +415,7 @@ PROMPT;
         ];
 
         $res = Http::withHeaders([
-            'Authorization'=>"Bearer {$apiKey}',
+            'Authorization'=>"Bearer {$apiKey}",
             'Content-Type'=>'application/json',
         ])->post("{$base}/chat/completions", $payload);
 
@@ -428,66 +460,103 @@ PROMPT;
 
     /**
      * Build simple inline diff between two texts and return HTML with <ins>/<del>.
-     * This is a fallback if front-end didn't provide diffHtml.
+     * Uses token-level LCS.
      */
-    private function makeInlineDiff(string $a, string $b): string
-    {
-        $tokenize = function(string $s) {
-            if ($s === '') return [];
-            preg_match_all("/[^\\s]+/u", $s, $m);
-            return $m[0] ?: [];
-        };
+    /**
+ * Build inline diff between two texts and return HTML with <ins>/<del>.
+ * Improved: tokenizes by non-whitespace tokens (words/punct), ignores whitespace tokens
+ * so the generated HTML will not contain lots of isolated whitespace fragments that
+ * Word renders as separate lines.
+ */
+private function makeInlineDiff(string $a, string $b): string
+{
+    // Tokenize into non-whitespace tokens (words, numbers, punctuation), preserving order.
+    $tokenizeNonWs = function(string $s) {
+        if ($s === '') return [];
+        // matches runs of non-whitespace characters
+        preg_match_all('/[^\s]+/u', $s, $m);
+        return $m[0] ?: [];
+    };
 
-        $A = $tokenize($a);
-        $B = $tokenize($b);
-        $n = count($A); $m = count($B);
+    $A = $tokenizeNonWs($a);
+    $B = $tokenizeNonWs($b);
+    $n = count($A); $m = count($B);
 
-        if ($n === 0 && $m === 0) return '<div></div>';
-        if ($A === $B) {
-            return '<div>' . htmlspecialchars(implode(' ', $A), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8') . '</div>';
-        }
-
-        $dp = array_fill(0, $n+1, array_fill(0, $m+1, 0));
-        for ($i=$n-1;$i>=0;$i--) {
-            for ($j=$m-1;$j>=0;$j--) {
-                if ($A[$i] === $B[$j]) $dp[$i][$j] = $dp[$i+1][$j+1] + 1;
-                else $dp[$i][$j] = max($dp[$i+1][$j], $dp[$i][$j+1]);
-            }
-        }
-
-        $i = 0; $j = 0; $pairs = [];
-        while ($i < $n && $j < $m) {
-            if ($A[$i] === $B[$j]) { $pairs[] = [$i,$j]; $i++; $j++; }
-            else if ($dp[$i+1][$j] >= $dp[$i][$j+1]) $i++;
-            else $j++;
-        }
-
-        $htmlParts = [];
-        $pi = 0; $pj = 0;
-        foreach ($pairs as [$ti,$tj]) {
-            if ($pi < $ti) {
-                $delSlice = array_slice($A, $pi, $ti - $pi);
-                $htmlParts[] = '<del>' . htmlspecialchars(implode(' ', $delSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8') . '</del>';
-            }
-            if ($pj < $tj) {
-                $insSlice = array_slice($B, $pj, $tj - $pj);
-                $htmlParts[] = '<ins>' . htmlspecialchars(implode(' ', $insSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8') . '</ins>';
-            }
-            $htmlParts[] = htmlspecialchars($A[$ti], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
-            $pi = $ti + 1; $pj = $tj + 1;
-        }
-        if ($pi < $n) {
-            $delSlice = array_slice($A, $pi, $n - $pi);
-            $htmlParts[] = '<del>' . htmlspecialchars(implode(' ', $delSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8') . '</del>';
-        }
-        if ($pj < $m) {
-            $insSlice = array_slice($B, $pj, $m - $pj);
-            $htmlParts[] = '<ins>' . htmlspecialchars(implode(' ', $insSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8') . '</ins>';
-        }
-
-        $html = implode(' ', $htmlParts);
-        return '<div>' . $html . '</div>';
+    // quick path if identical
+    if ($n === 0 && $m === 0) return '<div></div>';
+    if ($A === $B) {
+        // join with spaces to produce clean inline text
+        $text = htmlspecialchars(implode(' ', $A), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+        return '<div style="line-height:1.25;">' . $text . '</div>';
     }
+
+    // build dp table for LCS
+    $dp = array_fill(0, $n+1, array_fill(0, $m+1, 0));
+    for ($i = $n - 1; $i >= 0; $i--) {
+        for ($j = $m - 1; $j >= 0; $j--) {
+            if ($A[$i] === $B[$j]) $dp[$i][$j] = $dp[$i+1][$j+1] + 1;
+            else $dp[$i][$j] = max($dp[$i+1][$j], $dp[$i][$j+1]);
+        }
+    }
+
+    // backtrack to LCS pairs
+    $i = 0; $j = 0;
+    $pairs = [];
+    while ($i < $n && $j < $m) {
+        if ($A[$i] === $B[$j]) {
+            $pairs[] = [$i, $j];
+            $i++; $j++;
+        } elseif ($dp[$i+1][$j] >= $dp[$i][$j+1]) {
+            $i++;
+        } else {
+            $j++;
+        }
+    }
+
+    // Build HTML by grouping consecutive deletions/insertions into single <del>/<ins> blocks.
+    $htmlParts = [];
+    $pi = 0; $pj = 0;
+
+    foreach ($pairs as [$ti, $tj]) {
+        // deletions from A between pi..ti-1
+        if ($pi < $ti) {
+            $delSlice = array_slice($A, $pi, $ti - $pi);
+            $delText = htmlspecialchars(implode(' ', $delSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+            $htmlParts[] = "<del>{$delText}</del>";
+        }
+        // insertions from B between pj..tj-1
+        if ($pj < $tj) {
+            $insSlice = array_slice($B, $pj, $tj - $pj);
+            $insText = htmlspecialchars(implode(' ', $insSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+            $htmlParts[] = "<ins>{$insText}</ins>";
+        }
+        // common token
+        $common = htmlspecialchars($A[$ti], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+        $htmlParts[] = $common;
+        $pi = $ti + 1;
+        $pj = $tj + 1;
+    }
+
+    // remaining deletions
+    if ($pi < $n) {
+        $delSlice = array_slice($A, $pi, $n - $pi);
+        $delText = htmlspecialchars(implode(' ', $delSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+        $htmlParts[] = "<del>{$delText}</del>";
+    }
+    // remaining insertions
+    if ($pj < $m) {
+        $insSlice = array_slice($B, $pj, $m - $pj);
+        $insText = htmlspecialchars(implode(' ', $insSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+        $htmlParts[] = "<ins>{$insText}</ins>";
+    }
+
+    // join with single spaces to avoid runs of inline elements collapsing unexpectedly
+    $html = implode(' ', $htmlParts);
+
+    // wrap in a div with modest line-height to improve Word rendering
+    return '<div style="line-height:1.25;">' . $html . '</div>';
+}
+
 
     private function buildDocxAndGetUrl(string $title, string $extracted, string $corrected, array $explanations): string
     {
