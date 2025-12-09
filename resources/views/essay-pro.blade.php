@@ -507,7 +507,120 @@ async function ocrSingle(file){
 ========================= */
 btnAnalyze.addEventListener('click', analyzeEdited);
 btnSuggest.addEventListener('click', suggestCorrections);
+/* =========================
+   Helper: parse server text/html into structured grade object
+   - Accepts rawText (string) possibly containing full HTML
+   - Returns object: { scores: {content, communicative, organisation, language, total}, rationales: [...], suggestions: [...] , raw_text }
+*/
+function parseServerResponse(rawText){
+  const out = {
+    scores: { content: null, communicative: null, organisation: null, language: null, total: null },
+    rationales: [],
+    suggestions: [],
+    raw_text: rawText || ''
+  };
 
+  if(!rawText) return out;
+
+  // If HTML, extract visible text using DOMParser for safer stripping
+  let plain;
+  try {
+    const dp = new DOMParser();
+    const doc = dp.parseFromString(rawText, 'text/html');
+    // Remove scripts/styles content
+    doc.querySelectorAll('script,style,noscript').forEach(n => n.remove());
+    plain = doc.body ? doc.body.textContent || '' : rawText;
+  } catch(e){
+    // fallback to simple strip
+    plain = rawText.replace(/<\/?[^>]+(>|$)/g, '');
+  }
+  plain = (plain || '').replace(/\r/g,'').replace(/\t/g,' ').trim();
+
+  // Split into lines and collapse multi-space
+  const lines = plain.split('\n').map(l=> l.replace(/\s+/g,' ').trim()).filter(Boolean);
+
+  // 1) Try to extract explicit "Content: X/5" style patterns
+  const joinAll = lines.join('\n');
+
+  const findScore = (text, names) => {
+    // names: array of possible names (regex)
+    for(const n of names){
+      // examples: "Content: 3/5", "Content — 3/5", "Content 3/5", "Content: 3 — 0–5", "Content: 3"
+      const re1 = new RegExp(n + '\\s*[:\\-–—]?\\s*(\\d)\\s*\\/\\s*5', 'i');
+      const re2 = new RegExp(n + '\\s*[:\\-–—]?\\s*(\\d)\\s*(?:$|\\s|\\W)', 'i');
+      const m1 = text.match(re1);
+      if(m1) return Number(m1[1]);
+      const m2 = text.match(re2);
+      if(m2) {
+        const v = Number(m2[1]);
+        if(!isNaN(v) && v>=0 && v<=5) return v;
+      }
+    }
+    return null;
+  };
+
+  out.scores.content = findScore(joinAll, ['Content','CONTENT','content']);
+  out.scores.communicative = findScore(joinAll, ['Communicative','communicative','Communicative Achievement','Communicative:']);
+  out.scores.organisation = findScore(joinAll, ['Organisation','organization','Organisation','Organisation:','Organisation']);
+  out.scores.language = findScore(joinAll, ['Language','language','Language:']);
+
+  // Try total: look for "Total: 12/20" or "Overall total: 12/20" or "/20"
+  const mTotal = joinAll.match(/(?:Total|Overall total|Overall|Overall score)\s*[:\-–—]?\s*(\d{1,2})\s*\/\s*20/i) ||
+                 joinAll.match(/(\d{1,2})\s*\/\s*20/);
+  if(mTotal) out.scores.total = Number(mTotal[1]);
+
+  // If we didn't find individual criterion scores but find repeated "/5" tokens, try to assign in order
+  if([out.scores.content, out.scores.communicative, out.scores.organisation, out.scores.language].every(x=> x === null)){
+    const all5 = Array.from(joinAll.matchAll(/(\d)\/5/g)).map(m=>Number(m[1]));
+    if(all5.length >= 4){
+      out.scores.content = all5[0];
+      out.scores.communicative = all5[1];
+      out.scores.organisation = all5[2];
+      out.scores.language = all5[3];
+      if(!out.scores.total){
+        const sum = all5.slice(0,4).reduce((a,b)=>a+b,0);
+        out.scores.total = sum;
+      }
+    }
+  }
+
+  // 2) Extract rationales: lines that start with criterion name OR lines containing "—" and short explanation
+  const rationaleCandidates = [];
+  for(const line of lines){
+    // if line starts with "Content" or "Communicative" etc, capture it
+    if(/^(Content|Communicative|Organisation|Organisation|Language|Overall|Overall total)\b/i.test(line)){
+      rationaleCandidates.push(line);
+      continue;
+    }
+    // also include lines that look like "• ..." or start with dash
+    if(/^[\u2022\-\*]\s+/.test(line) || /^•\s+/.test(line) || /^[\d]+\.\s+/.test(line)){
+      rationaleCandidates.push(line);
+      continue;
+    }
+    // include short explanatory fragments that contain "/5" or "/20"
+    if(/\/5\b|\/20\b/.test(line)) rationaleCandidates.push(line);
+    // include lines that are medium length and contain keywords from rubric
+    if(line.length>30 && /(vocab|vocabulary|grammar|cohesion|cohesive|organis|communicat|relevant|inform)/i.test(line)) rationaleCandidates.push(line);
+  }
+  // dedupe and limit
+  out.rationales = Array.from(new Set(rationaleCandidates)).slice(0,60);
+
+  // 3) Suggestions: try to find "Suggestion" or "Revision Suggestions" block
+  const suggestionLines = lines.filter(l => /suggestion|revise|revision|improv|improve|try to|consider|avoid/i.test(l));
+  out.suggestions = Array.from(new Set(suggestionLines)).slice(0,40);
+
+  // 4) If nothing found for rationales, fallback to first 6 lines as explanation
+  if(out.rationales.length === 0){
+    out.rationales = lines.slice(0,6);
+  }
+
+  return out;
+}
+
+/* =========================
+   Robust analyzeEdited() that handles JSON, plain text, or full HTML pages
+   Replace existing analyzeEdited with this function
+========================= */
 async function analyzeEdited(){
   const text = (essayText.value || '').trim();
   if (!text) return alert('Empty text. Please OCR or paste/type text, then analyze.');
@@ -522,11 +635,10 @@ async function analyzeEdited(){
       rubric_code: rubricEl.value,
       rubric_text: rubricRef.value || '',
       text,
-      prompt_instructions: "Use rubric_text verbatim as the scoring rules. Do NOT paraphrase the rubric. Return structured JSON with scores, rationales, suggestions and (if possible) inline_diff_html. If unable, plain text summary is acceptable."
+      prompt_instructions: "Use rubric_text verbatim as the scoring rules. Do NOT paraphrase the rubric. Return structured JSON with scores, rationales, suggestions and (if possible) inline_diff_html. If unable to return JSON, plain text or HTML summary is acceptable."
     };
 
-    console.info('[Analyze] payload', payload);
-
+    // send request
     const controller = new AbortController();
     const timeoutMs = 45_000;
     const tid = setTimeout(()=>controller.abort(), timeoutMs);
@@ -540,32 +652,26 @@ async function analyzeEdited(){
 
     clearTimeout(tid);
 
-    console.info('[Analyze] response status', res.status, res.statusText);
-
-    // read raw text first (works for JSON and plain text)
+    // read response as text (covers JSON, plain text, HTML)
     const resText = await res.text().catch(()=>null);
 
-    // Try parse JSON; if parse fails, we will treat resText as plain-text response
+    // If response is empty and status OK, warn
+    if((!resText || !resText.trim()) && res.ok){
+      analyzeStatus.textContent = '❌ Analyze returned empty body.';
+      window.__lastGrade = { raw_text: '' };
+      alert('Server returned empty body. Check backend.');
+      return;
+    }
+
+    // Try parse JSON first
     let json = null;
-    try {
-      json = resText ? JSON.parse(resText) : null;
-    } catch(e) {
-      json = null;
-    }
+    try { json = resText ? JSON.parse(resText) : null; } catch(e){ json = null; }
 
-    // If non-OK status, surface server body as error message (but still try to display)
-    if (!res.ok) {
-      const serverMsg = (json && (json.error || json.message)) || (resText && resText.slice(0,200)) || `HTTP ${res.status}`;
-      // Still continue if server returned a body we can show; but alert the status
-      alert(`Server returned ${res.status}: ${serverMsg}`);
-      console.warn('[Analyze] non-ok response, body:', resText);
-    }
-
-    // If we got JSON -> behave as before (renderScore)
-    if (json) {
+    if(json && (typeof json === 'object')){
+      // structured — render as usual (renderScore expects payload shape)
       window.__lastGrade = json;
       renderScore(json, rubricEl.value);
-      analyzeStatus.textContent = '✅ Done (JSON).';
+      analyzeStatus.textContent = '✅ Done (parsed JSON).';
       pushHistory({
         time: new Date().toLocaleString(),
         title: titleEl.value || '',
@@ -577,47 +683,31 @@ async function analyzeEdited(){
       return;
     }
 
-    // Otherwise: treat resText as plain text / HTML result
-    // Show result card and put server text into Criterion Explanations
-    resultCard.classList.remove('hidden');
-    badgeRubric.textContent = rubricEl.value || '-';
+    // Not JSON — try to parse text/html to extract scores & rationales
+    const parsed = parseServerResponse(resText || '');
 
-    scContent.textContent = '-';
-    scComm.textContent = '-';
-    scOrg.textContent = '-';
-    scLang.textContent = '-';
-    scTotal.textContent = '-';
-
-    rationaleList.innerHTML = '';
-    const li = document.createElement('li');
-    // If the server returned HTML, strip tags for safety in list (simple approach)
-    const stripped = (resText || '').replace(/<\/?[^>]+(>|$)/g, '').trim();
-    li.textContent = stripped || 'No explanation text returned by the server.';
-    rationaleList.appendChild(li);
-
-    suggestions.innerHTML = '';
-    const li2 = document.createElement('li');
-    li2.textContent = 'No revision suggestions returned by the API.';
-    suggestions.appendChild(li2);
-
-    // Save raw text into window.__lastGrade so export can include it
-    window.__lastGrade = {
-      raw_text: resText || '',
-      raw_text_stripped: stripped,
-      raw_status: res.status,
-      raw_headers: Array.from(res.headers.entries())
+    // Build payload shape that renderScore can consume
+    const payloadLike = {
+      scores: parsed.scores,
+      rationales: parsed.rationales,
+      suggestions: parsed.suggestions
     };
 
-    analyzeStatus.textContent = '✅ Done (plain text).';
+    // save raw text as backup for export/debug
+    payloadLike.raw_text = parsed.raw_text;
 
-    // push history with the plain text as explanation
+    // render
+    window.__lastGrade = payloadLike;
+    renderScore(payloadLike, rubricEl.value);
+
+    analyzeStatus.textContent = '✅ Done (parsed plain text / HTML).';
     pushHistory({
       time: new Date().toLocaleString(),
       title: titleEl.value || '',
       rubric: rubricEl.value || '',
       extracted: lastOCRText || '',
       corrected: text,
-      explanations: [ stripped || (resText||'') ].filter(Boolean)
+      explanations: parsed.rationales
     });
 
   } catch (err) {
