@@ -462,53 +462,101 @@ PROMPT;
      * Build simple inline diff between two texts and return HTML with <ins>/<del>.
      * Uses token-level LCS.
      */
-    private function makeInlineDiff(string $a, string $b): string
-    {
-        // Tokenize: words, whitespace, punctuation
-        $tokenize = function(string $s) {
-            if ($s === '') return [''];
-            preg_match_all("/[A-Za-z0-9’'’-]+|\\s+|[^\\sA-Za-z0-9]/u", $s, $m);
-            return $m[0] ?: [$s];
-        };
+    /**
+ * Build inline diff between two texts and return HTML with <ins>/<del>.
+ * Improved: tokenizes by non-whitespace tokens (words/punct), ignores whitespace tokens
+ * so the generated HTML will not contain lots of isolated whitespace fragments that
+ * Word renders as separate lines.
+ */
+private function makeInlineDiff(string $a, string $b): string
+{
+    // Tokenize into non-whitespace tokens (words, numbers, punctuation), preserving order.
+    $tokenizeNonWs = function(string $s) {
+        if ($s === '') return [];
+        // matches runs of non-whitespace characters
+        preg_match_all('/[^\s]+/u', $s, $m);
+        return $m[0] ?: [];
+    };
 
-        $A = $tokenize($a);
-        $B = $tokenize($b);
-        $n = count($A); $m = count($B);
+    $A = $tokenizeNonWs($a);
+    $B = $tokenizeNonWs($b);
+    $n = count($A); $m = count($B);
 
-        // build dp
-        $dp = array_fill(0, $n+1, array_fill(0, $m+1, 0));
-        for ($i=$n-1;$i>=0;$i--) {
-            for ($j=$m-1;$j>=0;$j--) {
-                if ($A[$i] === $B[$j]) $dp[$i][$j] = $dp[$i+1][$j+1] + 1;
-                else $dp[$i][$j] = max($dp[$i+1][$j], $dp[$i][$j+1]);
-            }
-        }
-        // backtrack to get LCS pairs
-        $i = 0; $j = 0;
-        $pairs = [];
-        while ($i < $n && $j < $m) {
-            if ($A[$i] === $B[$j]) { $pairs[] = [$i,$j]; $i++; $j++; }
-            else if ($dp[$i+1][$j] >= $dp[$i][$j+1]) $i++;
-            else $j++;
-        }
-
-        // build html
-        $html = '';
-        $pi = 0; $pj = 0;
-        foreach ($pairs as [$ti, $tj]) {
-            while ($pi < $ti) { $html .= '<del>'.htmlspecialchars($A[$pi], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</del>'; $pi++; }
-            while ($pj < $tj) { $html .= '<ins>'.htmlspecialchars($B[$pj], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</ins>'; $pj++; }
-            if ($ti < $n && $tj < $m) {
-                $html .= htmlspecialchars($A[$ti], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
-                $pi = $ti + 1; $pj = $tj + 1;
-            }
-        }
-        while ($pi < $n) { $html .= '<del>'.htmlspecialchars($A[$pi], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</del>'; $pi++; }
-        while ($pj < $m) { $html .= '<ins>'.htmlspecialchars($B[$pj], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</ins>'; $pj++; }
-
-        // wrap with small container (PhpWord->Html expects body fragment)
-        return '<div>' . $html . '</div>';
+    // quick path if identical
+    if ($n === 0 && $m === 0) return '<div></div>';
+    if ($A === $B) {
+        // join with spaces to produce clean inline text
+        $text = htmlspecialchars(implode(' ', $A), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+        return '<div style="line-height:1.25;">' . $text . '</div>';
     }
+
+    // build dp table for LCS
+    $dp = array_fill(0, $n+1, array_fill(0, $m+1, 0));
+    for ($i = $n - 1; $i >= 0; $i--) {
+        for ($j = $m - 1; $j >= 0; $j--) {
+            if ($A[$i] === $B[$j]) $dp[$i][$j] = $dp[$i+1][$j+1] + 1;
+            else $dp[$i][$j] = max($dp[$i+1][$j], $dp[$i][$j+1]);
+        }
+    }
+
+    // backtrack to LCS pairs
+    $i = 0; $j = 0;
+    $pairs = [];
+    while ($i < $n && $j < $m) {
+        if ($A[$i] === $B[$j]) {
+            $pairs[] = [$i, $j];
+            $i++; $j++;
+        } elseif ($dp[$i+1][$j] >= $dp[$i][$j+1]) {
+            $i++;
+        } else {
+            $j++;
+        }
+    }
+
+    // Build HTML by grouping consecutive deletions/insertions into single <del>/<ins> blocks.
+    $htmlParts = [];
+    $pi = 0; $pj = 0;
+
+    foreach ($pairs as [$ti, $tj]) {
+        // deletions from A between pi..ti-1
+        if ($pi < $ti) {
+            $delSlice = array_slice($A, $pi, $ti - $pi);
+            $delText = htmlspecialchars(implode(' ', $delSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+            $htmlParts[] = "<del>{$delText}</del>";
+        }
+        // insertions from B between pj..tj-1
+        if ($pj < $tj) {
+            $insSlice = array_slice($B, $pj, $tj - $pj);
+            $insText = htmlspecialchars(implode(' ', $insSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+            $htmlParts[] = "<ins>{$insText}</ins>";
+        }
+        // common token
+        $common = htmlspecialchars($A[$ti], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+        $htmlParts[] = $common;
+        $pi = $ti + 1;
+        $pj = $tj + 1;
+    }
+
+    // remaining deletions
+    if ($pi < $n) {
+        $delSlice = array_slice($A, $pi, $n - $pi);
+        $delText = htmlspecialchars(implode(' ', $delSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+        $htmlParts[] = "<del>{$delText}</del>";
+    }
+    // remaining insertions
+    if ($pj < $m) {
+        $insSlice = array_slice($B, $pj, $m - $pj);
+        $insText = htmlspecialchars(implode(' ', $insSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+        $htmlParts[] = "<ins>{$insText}</ins>";
+    }
+
+    // join with single spaces to avoid runs of inline elements collapsing unexpectedly
+    $html = implode(' ', $htmlParts);
+
+    // wrap in a div with modest line-height to improve Word rendering
+    return '<div style="line-height:1.25;">' . $html . '</div>';
+}
+
 
     private function buildDocxAndGetUrl(string $title, string $extracted, string $corrected, array $explanations): string
     {
