@@ -13,14 +13,13 @@ use PhpOffice\PhpWord\Shared\Html;
 class EssayApiController extends Controller
 {
     /**
-     * OCR endpoint (image/pdf -> text). Non-persistent.
+     * 传统 OCR：image/pdf -> text （不落库）
      */
     public function ocr(Request $request)
     {
         $data = $request->validate([
             'file' => ['required','file','mimetypes:image/jpeg,image/png,image/webp,application/pdf'],
             'max_pages' => ['nullable','integer','min:1','max:10'],
-            'mode' => ['nullable','string']
         ]);
         $maxPages = $data['max_pages'] ?? 3;
 
@@ -32,16 +31,14 @@ class EssayApiController extends Controller
         $pages = 0;
 
         if ($mime === 'application/pdf') {
-            // try text layer first
             if (class_exists(\Smalot\PdfParser\Parser::class)) {
                 try {
                     $parser = new \Smalot\PdfParser\Parser();
                     $pdf    = $parser->parseFile($abs);
                     $text   = trim($pdf->getText() ?? '');
+                    $pages  = count($pdf->getPages());
                 } catch (\Throwable $e) { $text = ''; }
             }
-
-            // if empty, try imagick + OCR (vision API)
             if ($text === '') {
                 if (!class_exists(\Imagick::class)) {
                     return response()->json([
@@ -54,14 +51,12 @@ class EssayApiController extends Controller
                 $im->readImage($abs);
                 $n = min($im->getNumberImages(), $maxPages);
                 $i = 0;
-                $collected = '';
                 foreach ($im as $page) {
                     if ($i++ >= $n) break;
                     $page->setImageFormat('png');
                     $blob = $page->getImageBlob();
-                    $collected .= ($collected ? "\n\n" : "") . $this->visionOCR($blob, 'image/png');
+                    $text .= ($text ? "\n\n" : "") . $this->visionOCR($blob, 'image/png');
                 }
-                $text = $collected;
                 $pages = $n;
                 $im->clear(); $im->destroy();
             }
@@ -75,13 +70,13 @@ class EssayApiController extends Controller
     }
 
     /**
-     * Grade endpoint: call LLM to produce structured scores + rationales/suggestions.
+     * 打分（Rubric），不落库
      */
     public function grade(Request $request)
     {
         $payload = $request->validate([
             'title'  => ['nullable','string'],
-            'rubric' => ['required','string'],
+            'rubric' => ['required','string'], // rubric text (full)
             'text'   => ['required','string'],
         ]);
 
@@ -98,8 +93,8 @@ Score strictly on 4 dimensions (0–5 each):
 - Organisation
 - Language
 Total = sum of four (0–20).
-Return JSON only with keys: scores{content,communicative,organisation,language,total}, rationales[], suggestions[], inline_diff_html (if possible), original_text (optional), corrected_text (optional).
-Keep rationales concrete and short.
+Return JSON only with keys: scores{content,communicative,organisation,language,total}, suggestions[], rationales[].
+Keep suggestions concrete and actionable.
 SYS;
 
         $user = "RUBRIC={$payload['rubric']}\nTITLE={$payload['title']}\n\nESSAY:\n".$payload['text'];
@@ -124,29 +119,17 @@ SYS;
         $content = $res->json('choices.0.message.content') ?? '{}';
         $parsed  = json_decode($content, true) ?: [];
 
-        // Normalize fields
         $scores = $parsed['scores'] ?? [
             'content'=>null,'communicative'=>null,'organisation'=>null,'language'=>null,'total'=>null
         ];
-        $rationales = $parsed['rationales'] ?? $parsed['explanations'] ?? [];
-        $suggestions = $parsed['suggestions'] ?? [];
-        $inline = $parsed['inline_diff_html'] ?? $parsed['inline_diff'] ?? '';
+        $sugs   = $parsed['suggestions'] ?? [];
+        $rationales = $parsed['rationales'] ?? ($parsed['explanations'] ?? []);
 
-        // Return structured JSON
-        $report = [
-            'title' => $payload['title'] ?? '',
-            'rubric_text' => $payload['rubric'] ?? '',
-            'scores' => $scores,
-            'rationales' => $rationales,
-            'suggestions' => $suggestions,
-            'inline_diff_html' => $inline,
-        ];
-
-        return response()->json(['ok'=>true,'report'=>$report]);
+        return response()->json(['ok'=>true,'scores'=>$scores,'suggestions'=>$sugs,'rationales'=>$rationales]);
     }
 
     /**
-     * Direct extract + correct endpoint (file or text -> extracted,corrected,explanations).
+     * 直接“提取 + 润色”：文件(图片/PDF)或纯文本 -> 提取文本/润色/解释（不落库）
      */
     public function directCorrect(Request $request)
     {
@@ -283,44 +266,116 @@ PROMPT;
     }
 
     /**
-     * EXPORT DOCX (server route) — CHANGED to return structured JSON report
-     * Front-end will POST data and expect JSON { ok:true, report: { ... } }.
-     * This avoids server-side docx streaming issues across platforms.
+     * 导出完整报告 DOCX（含 AI Score, Explanations, InlineDiff 自动生成）
+     * NOTE: Revision Suggestions section removed per request.
      */
     public function exportDocx(Request $request)
     {
-        $data = $request->validate([
-            'title' => ['nullable','string'],
-            'rubric_text' => ['nullable','string'],
-            'rubric' => ['nullable','string'],
-            'extracted' => ['nullable','string'],
-            'corrected' => ['nullable','string'],
-            'scores' => ['nullable'],
-            'explanations' => ['nullable'],
-            'suggestions' => ['nullable'],
-            'inline_diff_html' => ['nullable','string'],
-        ]);
+        try {
+            $title = trim($request->input('title', 'Essay Report'));
+            $rubric = $request->input('rubric', '');
+            $scores = $request->input('scores', []);
+            $extracted = trim($request->input('extracted', ''));
+            $corrected = trim($request->input('corrected', ''));
+            $explanations = $request->input('explanations', []);
+            $suggestions = $request->input('suggestions', []);
+            $inlineDiff = $request->input('diffHtml', '');
 
-        // Normalize report
-        $report = [
-            'title' => trim($data['title'] ?? 'Essay Report'),
-            'rubric_text' => $data['rubric_text'] ?? $data['rubric'] ?? '',
-            'scores' => is_array($data['scores'] ?? null) ? $data['scores'] : [],
-            // rationales/explanations
-            'rationales' => is_array($data['explanations'] ?? null) ? $data['explanations'] : (is_array($data['rationales'] ?? null) ? $data['rationales'] : []),
-            // suggestions included in report object but front-end docx generation will omit them from final docx per requirement
-            'suggestions' => is_array($data['suggestions'] ?? null) ? $data['suggestions'] : [],
-            'inline_diff_html' => $data['inline_diff_html'] ?? ($data['diffHtml'] ?? ''),
-            'original_text' => $data['extracted'] ?? '',
-            'corrected' => $data['corrected'] ?? '',
-        ];
+            // If inlineDiff not provided, generate one from extracted & corrected
+            if (empty(trim((string)$inlineDiff)) && ($extracted !== '' || $corrected !== '')) {
+                $inlineDiff = $this->makeInlineDiff($extracted, $corrected);
+            }
 
-        return response()->json(['ok' => true, 'report' => $report]);
+            $phpWord = new PhpWord();
+            $section = $phpWord->addSection([
+                'marginTop' => 800,
+                'marginBottom' => 800,
+                'marginLeft' => 1000,
+                'marginRight' => 1000,
+            ]);
+
+            $section->addText("Essay Report", ['bold' => true, 'size' => 18, 'color' => '1F4E79']);
+            $section->addTextBreak(1);
+            $section->addText("Title: {$title}", ['bold' => true, 'size' => 12]);
+            if ($rubric) $section->addText("Rubric: {$rubric}", ['italic' => true, 'size' => 11]);
+            $section->addTextBreak(1);
+
+            $scores = array_merge([
+                'content' => null,
+                'communicative' => null,
+                'organisation' => null,
+                'language' => null,
+                'total' => null
+            ], (array)$scores);
+
+            $table = $section->addTable([
+                'borderSize' => 6,
+                'borderColor' => '999999',
+                'alignment' => JcTable::CENTER,
+                'cellMargin' => 80
+            ]);
+            $table->addRow();
+            $table->addCell(3000)->addText('Criterion', ['bold' => true]);
+            $table->addCell(1000)->addText('Score', ['bold' => true]);
+            $table->addCell(1000)->addText('Range', ['bold' => true]);
+
+            $criteria = [
+                'Content' => $scores['content'],
+                'Communicative' => $scores['communicative'],
+                'Organisation' => $scores['organisation'],
+                'Language' => $scores['language'],
+                'Total' => $scores['total'],
+            ];
+
+            foreach ($criteria as $key => $val) {
+                $table->addRow();
+                $table->addCell(3000)->addText($key);
+                $table->addCell(1000)->addText($val !== null ? (string)$val : '-');
+                $table->addCell(1000)->addText($key === 'Total' ? '/20' : '0–5');
+            }
+
+            $section->addTextBreak(1);
+
+            $section->addText("Criterion Explanations", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
+            if (empty($explanations)) {
+                $section->addText("No detailed explanations returned by the API.", ['italic' => true]);
+            } else {
+                foreach ($explanations as $line) $section->addListItem(strip_tags((string)$line), 0, ['size' => 11]);
+            }
+            $section->addTextBreak(1);
+
+            // NOTE: Revision Suggestions section removed per request
+
+            $section->addText("Inline Diff", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
+            if ($inlineDiff) {
+                // Html::addHtml expects safe HTML; we already output <ins>/<del>
+                Html::addHtml($section, $inlineDiff, false, false);
+            } else {
+                $section->addText("No inline diff data available.", ['italic' => true]);
+            }
+            $section->addTextBreak(1);
+
+            $section->addText("Original Essay", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
+            $section->addText($extracted ?: '-', ['size' => 11]);
+            $section->addTextBreak(1);
+
+            $section->addText("Corrected Essay", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
+            $section->addText($corrected ?: '-', ['size' => 11]);
+            $section->addTextBreak(1);
+
+            return response()->streamDownload(function () use ($phpWord) {
+                IOFactory::createWriter($phpWord, 'Word2007')->save('php://output');
+            }, 'essay-report.docx', [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                'Pragma' => 'no-cache',
+                'X-Accel-Buffering' => 'no',
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json(['ok'=>false,'error'=>'DOCX export failed: '.$e->getMessage()], 500);
+        }
     }
 
-    /**
-     * Smoke test: server-side docx generation OK
-     */
     public function exportDocxSmoke()
     {
         $w = new PhpWord();
@@ -339,9 +394,6 @@ PROMPT;
         ]);
     }
 
-    /**
-     * Lower-level vision OCR using LLM multimodal (image embedded as data URI).
-     */
     private function visionOCR(string $blob, string $mime): string
     {
         $apiKey = env('OPENAI_API_KEY');
@@ -373,12 +425,9 @@ PROMPT;
         return trim($res->json('choices.0.message.content') ?? '');
     }
 
-    /**
-     * Use LLM to extract + correct from an array of image blobs (binary strings)
-     */
     private function imageExtractAndCorrect(array $imageBlobs, string $apiKey, string $model, string $base): array
     {
-        $makeContent = function() use ($imageBlobs) {
+        $makeContent = function(string $type) use ($imageBlobs) {
             $content = [[
                 'type' => 'text',
                 'text' => "Extract all readable English text from the images, then correct/improve it. Return JSON with keys: {extracted, corrected, explanations[]}.",
@@ -395,7 +444,7 @@ PROMPT;
             'Content-Type'  => 'application/json',
         ])->post("{$base}/chat/completions", [
             'model' => $model,
-            'messages' => [[ 'role'=>'user', 'content'=>$makeContent() ]],
+            'messages' => [[ 'role'=>'user', 'content'=>$makeContent('image_url') ]],
             'temperature' => 0.0,
             'response_format' => ['type'=>'json_object'],
         ]);
@@ -410,9 +459,57 @@ PROMPT;
     }
 
     /**
-     * Utility: server-side docx writer (kept for optional server generation)
-     * Not used by front-end flow by default.
+     * Build simple inline diff between two texts and return HTML with <ins>/<del>.
+     * Uses token-level LCS.
      */
+    private function makeInlineDiff(string $a, string $b): string
+    {
+        // Tokenize: words, whitespace, punctuation
+        $tokenize = function(string $s) {
+            if ($s === '') return [''];
+            preg_match_all("/[A-Za-z0-9’'’-]+|\\s+|[^\\sA-Za-z0-9]/u", $s, $m);
+            return $m[0] ?: [$s];
+        };
+
+        $A = $tokenize($a);
+        $B = $tokenize($b);
+        $n = count($A); $m = count($B);
+
+        // build dp
+        $dp = array_fill(0, $n+1, array_fill(0, $m+1, 0));
+        for ($i=$n-1;$i>=0;$i--) {
+            for ($j=$m-1;$j>=0;$j--) {
+                if ($A[$i] === $B[$j]) $dp[$i][$j] = $dp[$i+1][$j+1] + 1;
+                else $dp[$i][$j] = max($dp[$i+1][$j], $dp[$i][$j+1]);
+            }
+        }
+        // backtrack to get LCS pairs
+        $i = 0; $j = 0;
+        $pairs = [];
+        while ($i < $n && $j < $m) {
+            if ($A[$i] === $B[$j]) { $pairs[] = [$i,$j]; $i++; $j++; }
+            else if ($dp[$i+1][$j] >= $dp[$i][$j+1]) $i++;
+            else $j++;
+        }
+
+        // build html
+        $html = '';
+        $pi = 0; $pj = 0;
+        foreach ($pairs as [$ti, $tj]) {
+            while ($pi < $ti) { $html .= '<del>'.htmlspecialchars($A[$pi], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</del>'; $pi++; }
+            while ($pj < $tj) { $html .= '<ins>'.htmlspecialchars($B[$pj], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</ins>'; $pj++; }
+            if ($ti < $n && $tj < $m) {
+                $html .= htmlspecialchars($A[$ti], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+                $pi = $ti + 1; $pj = $tj + 1;
+            }
+        }
+        while ($pi < $n) { $html .= '<del>'.htmlspecialchars($A[$pi], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</del>'; $pi++; }
+        while ($pj < $m) { $html .= '<ins>'.htmlspecialchars($B[$pj], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8').'</ins>'; $pj++; }
+
+        // wrap with small container (PhpWord->Html expects body fragment)
+        return '<div>' . $html . '</div>';
+    }
+
     private function buildDocxAndGetUrl(string $title, string $extracted, string $corrected, array $explanations): string
     {
         if (!class_exists(\PhpOffice\PhpWord\PhpWord::class)) {
@@ -439,7 +536,7 @@ PROMPT;
         if (!empty($explanations)) {
             $section->addTitle('Explanations', 2);
             foreach ($explanations as $ex) {
-                $section->addListItem($ex, 0, [], ['listType' => \PhpOffice\PhpWord\Style\ListItem::TYPE_BULLET_FILLED]);
+                $section->addListItem(strip_tags($ex), 0, [], ['listType' => \PhpOffice\PhpWord\Style\ListItem::TYPE_BULLET_FILLED]);
             }
         }
 
