@@ -522,14 +522,13 @@ async function analyzeEdited(){
       rubric_code: rubricEl.value,
       rubric_text: rubricRef.value || '',
       text,
-      prompt_instructions: "Use rubric_text verbatim as the scoring rules. Do NOT paraphrase the rubric. Return structured JSON with scores, rationales, suggestions and (if possible) inline_diff_html."
+      prompt_instructions: "Use rubric_text verbatim as the scoring rules. Do NOT paraphrase the rubric. Return structured JSON with scores, rationales, suggestions and (if possible) inline_diff_html. If unable, plain text summary is acceptable."
     };
 
-    // DEBUG: log outgoing payload
     console.info('[Analyze] payload', payload);
 
     const controller = new AbortController();
-    const timeoutMs = 45_000; // 45s timeout
+    const timeoutMs = 45_000;
     const tid = setTimeout(()=>controller.abort(), timeoutMs);
 
     const res = await fetch(ORIGIN + '/api/grade', {
@@ -537,58 +536,93 @@ async function analyzeEdited(){
       headers: { 'Content-Type':'application/json', 'X-CSRF-TOKEN': CSRF },
       body: JSON.stringify(payload),
       signal: controller.signal,
-    }).catch(err => {
-      // network / CORS / aborted
-      throw err;
-    });
+    }).catch(err => { throw err; });
 
     clearTimeout(tid);
 
-    // dump status for debugging
     console.info('[Analyze] response status', res.status, res.statusText);
-    // attempt to read text in any case (helps when server returns HTML error page)
+
+    // read raw text first (works for JSON and plain text)
     const resText = await res.text().catch(()=>null);
-    // try parse JSON safely
+
+    // Try parse JSON; if parse fails, we will treat resText as plain-text response
     let json = null;
-    try { json = resText ? JSON.parse(resText) : null; } catch(parseErr){
-      console.warn('[Analyze] failed to parse JSON, server returned non-JSON. Raw text below.');
+    try {
+      json = resText ? JSON.parse(resText) : null;
+    } catch(e) {
+      json = null;
     }
 
-    // Log full response for debugging
-    console.groupCollapsed('[Analyze] Full server response (raw)');
-    console.log('status:', res.status);
-    console.log('headers:', Array.from(res.headers.entries()));
-    console.log('body (text):', resText);
-    console.groupEnd();
-
+    // If non-OK status, surface server body as error message (but still try to display)
     if (!res.ok) {
-      const serverMsg = (json && (json.error || json.message)) || resText || `HTTP ${res.status}`;
-      throw new Error(`Server error: ${serverMsg}`);
+      const serverMsg = (json && (json.error || json.message)) || (resText && resText.slice(0,200)) || `HTTP ${res.status}`;
+      // Still continue if server returned a body we can show; but alert the status
+      alert(`Server returned ${res.status}: ${serverMsg}`);
+      console.warn('[Analyze] non-ok response, body:', resText);
     }
 
-    // Expecting JSON with ok flag or scores — adapt if your backend shape differs
-    if (!json) throw new Error('No JSON returned from server.');
+    // If we got JSON -> behave as before (renderScore)
+    if (json) {
+      window.__lastGrade = json;
+      renderScore(json, rubricEl.value);
+      analyzeStatus.textContent = '✅ Done (JSON).';
+      pushHistory({
+        time: new Date().toLocaleString(),
+        title: titleEl.value || '',
+        rubric: rubricEl.value || '',
+        extracted: lastOCRText || '',
+        corrected: text,
+        explanations: (json.rationales || json.explanations || json.criteria_explanations || json.rubric_breakdown || [])
+      });
+      return;
+    }
 
-    // Keep raw result
-    window.__lastGrade = json;
+    // Otherwise: treat resText as plain text / HTML result
+    // Show result card and put server text into Criterion Explanations
+    resultCard.classList.remove('hidden');
+    badgeRubric.textContent = rubricEl.value || '-';
 
-    // Render UI with whatever JSON we got
-    renderScore(json, rubricEl.value);
+    scContent.textContent = '-';
+    scComm.textContent = '-';
+    scOrg.textContent = '-';
+    scLang.textContent = '-';
+    scTotal.textContent = '-';
 
-    analyzeStatus.textContent = '✅ Done.';
+    rationaleList.innerHTML = '';
+    const li = document.createElement('li');
+    // If the server returned HTML, strip tags for safety in list (simple approach)
+    const stripped = (resText || '').replace(/<\/?[^>]+(>|$)/g, '').trim();
+    li.textContent = stripped || 'No explanation text returned by the server.';
+    rationaleList.appendChild(li);
+
+    suggestions.innerHTML = '';
+    const li2 = document.createElement('li');
+    li2.textContent = 'No revision suggestions returned by the API.';
+    suggestions.appendChild(li2);
+
+    // Save raw text into window.__lastGrade so export can include it
+    window.__lastGrade = {
+      raw_text: resText || '',
+      raw_text_stripped: stripped,
+      raw_status: res.status,
+      raw_headers: Array.from(res.headers.entries())
+    };
+
+    analyzeStatus.textContent = '✅ Done (plain text).';
+
+    // push history with the plain text as explanation
     pushHistory({
       time: new Date().toLocaleString(),
       title: titleEl.value || '',
       rubric: rubricEl.value || '',
       extracted: lastOCRText || '',
       corrected: text,
-      explanations: (json.rationales || json.explanations || json.criteria_explanations || json.rubric_breakdown || [])
+      explanations: [ stripped || (resText||'') ].filter(Boolean)
     });
 
   } catch (err) {
     console.error('[Analyze] error', err);
     analyzeStatus.textContent = '❌ Analyze failed.';
-    // nicer alert for debugging
     if (err.name === 'AbortError') {
       alert('Request timed out after 45s. Check server health or increase timeout.');
     } else {
@@ -599,6 +633,7 @@ async function analyzeEdited(){
     btnAnalyze.disabled = false;
   }
 }
+
 
 
 async function suggestCorrections(){
