@@ -352,6 +352,20 @@ Part 2:
 `;
 
 /* =========================
+   UTIL: update action buttons based on editor content
+   -> ensures Analyze & Suggest are enabled when user types directly
+========================= */
+function updateActionButtons(){
+  const hasText = (essayText.value || '').trim().length > 0;
+  // If there's text (either typed or from OCR), allow analyze & suggest
+  btnAnalyze.disabled = !hasText;
+  btnSuggest.disabled = !hasText;
+}
+essayText.addEventListener('input', updateActionButtons);
+// Also initialize on load (in case of prefilled content)
+document.addEventListener('DOMContentLoaded', updateActionButtons);
+
+/* =========================
    File Selection
 ========================= */
 chooseButton.addEventListener('click',()=>fileInput.click());
@@ -387,8 +401,7 @@ async function handleFiles(e){
 
   // Reset UI enabling Step 1
   btnExtract.disabled = false;
-  btnAnalyze.disabled = true;
-  btnSuggest.disabled = true;
+  // keep analyze/suggest controlled by updateActionButtons (they remain disabled until text present)
   analyzeStatus.textContent = '';
   extractStatus.textContent = '';
 
@@ -467,10 +480,7 @@ async function doOCR(){
 
     // Put OCR text into editor for manual editing
     essayText.value = lastOCRText;
-
-    // Enable Step 3 after user has something to edit
-    btnAnalyze.disabled = false;
-    btnSuggest.disabled = false;
+    updateActionButtons();
 
     extractStatus.textContent = '✅ OCR complete. Original text placed in the editor.';
   } catch (err) {
@@ -500,7 +510,7 @@ btnSuggest.addEventListener('click', suggestCorrections);
 
 async function analyzeEdited(){
   const text = (essayText.value || '').trim();
-  if (!text) return alert('Empty text. Please OCR first, then edit, then analyze.');
+  if (!text) return alert('Empty text. Please OCR or paste/type text, then analyze.');
 
   overlay.classList.add('show');
   analyzeStatus.textContent = 'Analyzing…';
@@ -959,10 +969,9 @@ function renderHistory(){
       rubricEl.value = h.rubric || 'SPM_P1';
       essayText.value = h.corrected || h.extracted || '';
       lastOCRText = h.extracted || '';
+      updateActionButtons();
       window.scrollTo({ top: 0, behavior: 'smooth' });
       // Enable analyze since text is present
-      btnAnalyze.disabled = !(essayText.value || '').trim();
-      btnSuggest.disabled = !(essayText.value || '').trim();
     };
   });
   historyList.querySelectorAll('.btnDelete').forEach(btn=>{
