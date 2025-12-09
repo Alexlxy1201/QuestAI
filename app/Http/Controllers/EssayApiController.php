@@ -4,497 +4,441 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
-use PhpOffice\PhpWord\PhpWord;
-use PhpOffice\PhpWord\IOFactory;
-use PhpOffice\PhpWord\SimpleType\JcTable;
-use PhpOffice\PhpWord\Shared\Html;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use PhpOffice\PhpWord\PhpWord; // require phpoffice/phpword
+use PhpOffice\PhpWord\Shared\Html as PhpWordHtml;
 
 class EssayApiController extends Controller
 {
     /**
-     * 传统 OCR：image/pdf -> text （不落库）
+     * Helper: call OpenAI ChatCompletions and return assistant content (string).
+     * Tries default v1/chat/completions. Respects OPENAI_BASE_URL if set.
+     */
+    protected function callOpenAI(array $payload): array
+    {
+        $apiKey = env('OPENAI_API_KEY');
+        if (!$apiKey) {
+            return ['ok' => false, 'error' => 'OPENAI_API_KEY not configured'];
+        }
+
+        $base = rtrim(env('OPENAI_BASE_URL', 'https://api.openai.com/v1'), '/');
+        $model = env('OPENAI_MODEL', 'gpt-4o-mini'); // fallback
+
+        // ensure model present
+        $payload = array_merge(['model' => $model], $payload);
+
+        try {
+            $resp = Http::withHeaders([
+                'Authorization' => "Bearer {$apiKey}",
+                'Content-Type'  => 'application/json',
+            ])->post("{$base}/chat/completions", $payload);
+
+            $status = $resp->status();
+            $body = $resp->body(); // raw text
+            $json = $resp->json(null);
+
+            // try to extract assistant content robustly
+            $assistant = null;
+            if (is_array($json) && isset($json['choices'][0]['message']['content'])) {
+                $assistant = $json['choices'][0]['message']['content'];
+            } else {
+                // fallback: try to find "content" in text
+                $assistant = $body;
+            }
+
+            return ['ok' => $resp->ok(), 'status' => $status, 'raw' => $body, 'assistant' => $assistant, 'response_json' => $json];
+        } catch (\Throwable $e) {
+            Log::error('OpenAI request failed: ' . $e->getMessage());
+            return ['ok' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Try to parse a JSON object out of a string returned by the model.
+     * If parse fails, return null.
+     */
+    protected function extractJsonFromString(string $s)
+    {
+        $s = trim($s);
+        if (!$s) return null;
+
+        // If it already is JSON
+        if (($d = json_decode($s, true)) && json_last_error() === JSON_ERROR_NONE) {
+            return $d;
+        }
+
+        // Attempt to find first { ... } or [ ... ] block
+        if (preg_match('/(\{(?:.*)\})/sU', $s, $m)) {
+            $cand = $m[1];
+            if (($d = json_decode($cand, true)) && json_last_error() === JSON_ERROR_NONE) {
+                return $d;
+            }
+        }
+        if (preg_match('/(\[(?:.*)\])/sU', $s, $m)) {
+            $cand = $m[1];
+            if (($d = json_decode($cand, true)) && json_last_error() === JSON_ERROR_NONE) {
+                return $d;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Build a simple inline diff HTML between original and corrected.
+     * Small token-based LCS diff to produce <ins> and <del> tags.
+     */
+    protected function makeInlineDiffHtml(string $orig, string $corr): string
+    {
+        // tokenize by words and punctuation (keeps whitespace tokens)
+        $re = '/[A-Za-z0-9\p{L}’\'’-]+|\s+|[^\sA-Za-z0-9\p{L}]/u';
+        preg_match_all($re, $orig, $ma);
+        $a = $ma[0] ?: [];
+        preg_match_all($re, $corr, $mb);
+        $b = $mb[0] ?: [];
+
+        $n = count($a);
+        $m = count($b);
+        $dp = array_fill(0, $n+1, array_fill(0, $m+1, 0));
+        for ($i = $n - 1; $i >= 0; $i--) {
+            for ($j = $m - 1; $j >= 0; $j--) {
+                $dp[$i][$j] = ($a[$i] === $b[$j]) ? $dp[$i+1][$j+1] + 1 : max($dp[$i+1][$j], $dp[$i][$j+1]);
+            }
+        }
+        $i = $j = 0;
+        $html = '';
+        while ($i < $n && $j < $m) {
+            if ($a[$i] === $b[$j]) {
+                $html .= htmlentities($a[$i], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $i++; $j++;
+            } else if ($dp[$i+1][$j] >= $dp[$i][$j+1]) {
+                $html .= '<del>' . htmlentities($a[$i], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</del>';
+                $i++;
+            } else {
+                $html .= '<ins>' . htmlentities($b[$j], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</ins>';
+                $j++;
+            }
+        }
+        while ($i < $n) {
+            $html .= '<del>' . htmlentities($a[$i], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</del>';
+            $i++;
+        }
+        while ($j < $m) {
+            $html .= '<ins>' . htmlentities($b[$j], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</ins>';
+            $j++;
+        }
+        return $html;
+    }
+
+    /**
+     * POST /api/ocr
+     * Accepts a file input 'file' (image or pdf)
+     * - If OCR_SPACE_API_KEY set -> forward to ocr.space
+     * - Else try tesseract CLI if available
      */
     public function ocr(Request $request)
     {
-        $data = $request->validate([
-            'file' => ['required','file','mimetypes:image/jpeg,image/png,image/webp,application/pdf'],
-            'max_pages' => ['nullable','integer','min:1','max:10'],
-        ]);
-        $maxPages = $data['max_pages'] ?? 3;
+        if (!$request->hasFile('file')) {
+            return response()->json(['ok' => false, 'error' => 'No file provided.'], 400);
+        }
+        $file = $request->file('file');
 
-        $path = $request->file('file')->store('essays/uploads');
-        $abs  = Storage::path($path);
-        $mime = $request->file('file')->getMimeType();
-
-        $text  = '';
-        $pages = 0;
-
-        if ($mime === 'application/pdf') {
-            if (class_exists(\Smalot\PdfParser\Parser::class)) {
-                try {
-                    $parser = new \Smalot\PdfParser\Parser();
-                    $pdf    = $parser->parseFile($abs);
-                    $text   = trim($pdf->getText() ?? '');
-                    $pages  = count($pdf->getPages());
-                } catch (\Throwable $e) { $text = ''; }
-            }
-            if ($text === '') {
-                if (!class_exists(\Imagick::class)) {
-                    return response()->json([
-                        'ok'=>false,
-                        'error'=>'PDF looks scanned. Please enable Imagick to OCR scanned PDFs.',
-                    ], 400);
+        // try OCR.Space if key provided
+        $ocrKey = env('OCR_SPACE_API_KEY', '');
+        if ($ocrKey) {
+            try {
+                $response = Http::asMultipart()->post('https://api.ocr.space/parse/image', [
+                    ['name' => 'file', 'contents' => fopen($file->getPathname(), 'r'), 'filename' => $file->getClientOriginalName()],
+                    ['name' => 'language', 'contents' => 'eng'],
+                    ['name' => 'OCREngine', 'contents' => '2'],
+                    ['name' => 'isOverlayRequired', 'contents' => 'false'],
+                    ['name' => 'apikey', 'contents' => $ocrKey],
+                ]);
+                if (!$response->ok()) {
+                    return response()->json(['ok' => false, 'error' => 'OCR provider error', 'status' => $response->status(), 'body' => $response->body()], 500);
                 }
-                $im = new \Imagick();
-                $im->setResolution(200, 200);
-                $im->readImage($abs);
-                $n = min($im->getNumberImages(), $maxPages);
-                $i = 0;
-                foreach ($im as $page) {
-                    if ($i++ >= $n) break;
-                    $page->setImageFormat('png');
-                    $blob = $page->getImageBlob();
-                    $text .= ($text ? "\n\n" : "") . $this->visionOCR($blob, 'image/png');
-                }
-                $pages = $n;
-                $im->clear(); $im->destroy();
+                $j = $response->json();
+                $text = $j['ParsedResults'][0]['ParsedText'] ?? '';
+                return response()->json(['ok' => true, 'text' => (string) $text]);
+            } catch (\Throwable $e) {
+                return response()->json(['ok' => false, 'error' => 'OCR (ocr.space) failed: ' . $e->getMessage()], 500);
             }
-        } else {
-            $blob  = file_get_contents($abs);
-            $text  = $this->visionOCR($blob, $mime);
-            $pages = 1;
         }
 
-        return response()->json(['ok'=>true,'text'=>$text,'pages'=>$pages]);
+        // fallback: tesseract CLI (if installed)
+        $tmp = $file->getPathname();
+        $outFile = sys_get_temp_dir() . '/ocr_' . Str::random(8) . '.txt';
+        try {
+            $cmd = "tesseract " . escapeshellarg($tmp) . " " . escapeshellarg(str_replace('.txt', '', $outFile)) . " -l eng 2>&1";
+            exec($cmd, $out, $ret);
+            $text = @file_get_contents($outFile) ?: '';
+            @unlink($outFile);
+            return response()->json(['ok' => true, 'text' => (string) $text]);
+        } catch (\Throwable $e) {
+            return response()->json(['ok' => false, 'error' => 'No OCR provider configured (set OCR_SPACE_API_KEY or install tesseract). ' . $e->getMessage()], 500);
+        }
     }
 
     /**
-     * 打分（Rubric），不落库
+     * POST /api/grade
+     * Body: { title, rubric_code, rubric_text, text, prompt_instructions? }
+     * Guarantees a JSON response. If model returns non-JSON, returns fallback JSON with raw_text.
      */
     public function grade(Request $request)
     {
-        $payload = $request->validate([
-            'title'  => ['nullable','string'],
-            'rubric' => ['required','string'], // SPM_P1 | SPM_P2 | SPM_P3 | UASA_P1 | UASA_P2
-            'text'   => ['required','string'],
-        ]);
-
-        $apiKey = env('OPENAI_API_KEY');
-        $model  = env('OPENAI_MODEL', 'gpt-4o-mini');
-        $base   = rtrim(env('OPENAI_BASE_URL', 'https://api.openai.com/v1'), '/');
-        if (!$apiKey) return response()->json(['ok'=>false,'error'=>'OPENAI_API_KEY missing'], 500);
-
-        $system = <<<SYS
-You are an SPM/UASA essay grader.
-Score strictly on 4 dimensions (0–5 each):
-- Content
-- Communicative Achievement
-- Organisation
-- Language
-Total = sum of four (0–20).
-Return JSON only with keys: scores{content,communicative,organisation,language,total}, suggestions[].
-Keep suggestions concrete and actionable.
-SYS;
-
-        $user = "RUBRIC={$payload['rubric']}\nTITLE={$payload['title']}\n\nESSAY:\n".$payload['text'];
-
-        $res = Http::withHeaders([
-            'Authorization' => "Bearer {$apiKey}",
-            'Content-Type'  => 'application/json',
-        ])->post("{$base}/chat/completions", [
-            'model' => $model,
-            'messages' => [
-                ['role'=>'system','content'=>$system],
-                ['role'=>'user','content'=>$user],
-            ],
-            'temperature' => 0.2,
-            'response_format' => ['type'=>'json_object'],
-        ]);
-
-        if (!$res->successful()) {
-            return response()->json(['ok'=>false,'error'=>'OpenAI grade request failed','details'=>$res->json()], 500);
+        $text = (string) $request->input('text', '');
+        if (trim($text) === '') {
+            return response()->json(['ok' => false, 'error' => 'No text provided.'], 400);
         }
 
-        $content = $res->json('choices.0.message.content') ?? '{}';
-        $parsed  = json_decode($content, true) ?: [];
+        $title = (string) $request->input('title', '');
+        $rubric_code = (string) $request->input('rubric_code', $request->input('rubric'));
+        $rubric_text = (string) $request->input('rubric_text', '');
+        $userPrompt = (string) $request->input('prompt_instructions', '');
 
-        $scores = $parsed['scores'] ?? [
-            'content'=>null,'communicative'=>null,'organisation'=>null,'language'=>null,'total'=>null
+        // Build a robust system + user prompt to force JSON output
+        $system = "You are a strict exam rater. Use the rubric_text verbatim when scoring.";
+        $user = <<<PROMPT
+Rate the following essay according to the rubric_text exactly. ALWAYS RETURN A SINGLE JSON OBJECT and nothing else.
+Fields required in the JSON:
+{
+  "scores": { "content": 0-5, "communicative": 0-5, "organisation": 0-5, "language": 0-5, "total": 0-20 },
+  "rationales": ["...explain criterion by criterion..."],
+  "suggestions": ["...revision suggestions..."],
+  "original_text": "...",
+  "corrected_text": "..." (optional, if you can provide corrected text),
+  "inline_diff_html": "<ins>...</ins><del>...</del>" (optional)
+}
+rubric_text:
+\"\"\"{$rubric_text}\"\"\"
+
+Essay title: "{$title}"
+
+Essay:
+\"\"\"{$text}\"\"\"
+
+Extra instructions (if any): {$userPrompt}
+
+If you cannot return proper JSON, return a JSON with keys: ok:false and error explaining why.
+PROMPT;
+
+        $payload = [
+            'messages' => [
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => $user],
+            ],
+            'temperature' => 0.0,
+            'max_tokens' => 800,
         ];
-        $sugs   = $parsed['suggestions'] ?? [];
 
-        return response()->json(['ok'=>true,'scores'=>$scores,'suggestions'=>$sugs]);
+        $res = $this->callOpenAI($payload);
+        if (!$res['ok']) {
+            return response()->json(['ok' => false, 'error' => $res['error'] ?? 'OpenAI error']);
+        }
+
+        $assistant = (string) ($res['assistant'] ?? '');
+        // Try parse JSON out of assistant response
+        $parsed = $this->extractJsonFromString($assistant);
+        if ($parsed !== null) {
+            // ensure consistent shape
+            $parsed['ok'] = true;
+            return response()->json($parsed);
+        }
+
+        // fallback: return raw_text inside JSON so frontend won't break
+        return response()->json([
+            'ok' => true,
+            'raw_text' => $res['raw'] ?? $assistant,
+            'message' => 'Model did not return parseable JSON. See raw_text.',
+        ]);
     }
 
     /**
-     * 直接“提取 + 润色”：文件(图片/PDF)或纯文本 -> 提取文本/润色/解释（不落库）
+     * POST /api/essay/direct-correct
+     * Body: text, title?
+     * Returns JSON: { ok:true, original: "...", corrected: "...", explanations: [...] }
      */
     public function directCorrect(Request $request)
     {
-        $data = $request->validate([
-            'text'        => ['nullable','string'],
-            'file'        => ['nullable','file','mimetypes:image/jpeg,image/png,image/webp,application/pdf'],
-            'max_pages'   => ['nullable','integer','min:1','max:10'],
-            'make_docx'   => ['nullable','boolean'],
-            'title'       => ['nullable','string'],
-        ]);
-
-        if (!$request->hasFile('file') && !isset($data['text'])) {
-            return response()->json(['ok'=>false, 'error'=>'Provide either text or file'], 422);
+        $text = (string) $request->input('text', '');
+        if (trim($text) === '') {
+            return response()->json(['ok' => false, 'error' => 'No text provided.'], 400);
         }
+        $title = (string) $request->input('title', '');
 
-        $apiKey = env('OPENAI_API_KEY');
-        $model  = env('OPENAI_MODEL', 'gpt-4o-mini');
-        $base   = rtrim(env('OPENAI_BASE_URL', 'https://api.openai.com/v1'), '/');
-        if (!$apiKey) return response()->json(['ok'=>false,'error'=>'OPENAI_API_KEY missing'], 500);
-
-        $extracted = null;
-        $corrected = null;
-        $explainArr = [];
-
-        if ($request->hasFile('file')) {
-            $file = $request->file('file');
-            $mime = $file->getMimeType();
-            $path = $file->store('essays/uploads');
-            $abs  = Storage::path($path);
-
-            if ($mime === 'application/pdf') {
-                $textLayer = '';
-                if (class_exists(\Smalot\PdfParser\Parser::class)) {
-                    try {
-                        $parser = new \Smalot\PdfParser\Parser();
-                        $pdf    = $parser->parseFile($abs);
-                        $textLayer = trim($pdf->getText() ?? '');
-                    } catch (\Throwable $e) { /* ignore */ }
-                }
-                if ($textLayer !== '') {
-                    $extracted = $textLayer;
-                } elseif (class_exists(\Imagick::class)) {
-                    $maxPages = $data['max_pages'] ?? 3;
-                    $im = new \Imagick();
-                    $im->setResolution(200, 200);
-                    $im->readImage($abs);
-                    $n = min($im->getNumberImages(), $maxPages);
-                    $images = [];
-                    $i = 0;
-                    foreach ($im as $page) {
-                        if ($i++ >= $n) break;
-                        $page->setImageFormat('png');
-                        $images[] = $page->getImageBlob();
-                    }
-                    $im->clear(); $im->destroy();
-
-                    $result = $this->imageExtractAndCorrect($images, $apiKey, $model, $base);
-                    $extracted  = $result['extracted'] ?? '';
-                    $corrected  = $result['corrected'] ?? '';
-                    $explainArr = $result['explanations'] ?? [];
-                } else {
-                    return response()->json([
-                        'ok'=>false,
-                        'error'=>'PDF has no text layer. Install Imagick to process scanned PDFs.',
-                    ], 400);
-                }
-            } else {
-                $blob = file_get_contents($abs);
-                $result = $this->imageExtractAndCorrect([$blob], $apiKey, $model, $base);
-                $extracted  = $result['extracted'] ?? '';
-                $corrected  = $result['corrected'] ?? '';
-                $explainArr = $result['explanations'] ?? [];
-            }
-        }
-
-        if ($extracted === null) {
-            $extracted = $data['text'] ?? '';
-        }
-
-        if ($corrected === null) {
-            $prompt = <<<PROMPT
-You are an English grammar and clarity corrector.
-Please correct/improve the text and explain the changes.
-Return JSON with keys:
+        $system = "You are an English writing corrector. Produce a corrected version and short explanations for edits.";
+        $user = <<<PROMPT
+Please correct the following essay for grammar, clarity, and coherence. Return JSON only with keys:
 {
-  "extracted": "<the original text you receive>",
-  "corrected": "<improved text>",
-  "explanations": ["pointwise explanations ..."]
+  "original": "...",
+  "corrected": "...",
+  "explanations": ["...short reasons for major changes..."]
 }
-Text:
-"""{$extracted}"""
+Essay title: "{$title}"
+Essay:
+\"\"\"{$text}\"\"\"
 PROMPT;
 
-            $res = Http::withHeaders([
-                'Authorization' => "Bearer {$apiKey}",
-                'Content-Type'  => 'application/json',
-            ])->post("{$base}/chat/completions", [
-                'model' => $model,
-                'messages' => [
-                    ['role'=>'system','content'=>'You are an accurate English writing corrector.'],
-                    ['role'=>'user','content'=>$prompt],
-                ],
-                'temperature' => 0.2,
-                'response_format' => ['type'=>'json_object'],
-            ]);
-
-            if (!$res->successful()) {
-                return response()->json([
-                    'ok'=>false,
-                    'error'=>'OpenAI correct request failed',
-                    'details'=>$res->json() ?: ['status'=>$res->status()],
-                ], 500);
-            }
-
-            $content = $res->json('choices.0.message.content') ?? '{}';
-            $parsed  = json_decode($content, true) ?: [];
-            $extracted  = $parsed['extracted'] ?? $extracted;
-            $corrected  = $parsed['corrected'] ?? '';
-            $explainArr = $parsed['explanations'] ?? [];
-        }
-
-        $resp = [
-            'ok'           => true,
-            'extracted'    => $extracted,
-            'corrected'    => $corrected,
-            'explanations' => $explainArr,
+        $payload = [
+            'messages' => [
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => $user],
+            ],
+            'temperature' => 0.0,
+            'max_tokens' => 800,
         ];
 
-        if (!empty($data['make_docx'])) {
-            $resp['docx_url'] = $this->buildDocxAndGetUrl($data['title'] ?? 'Essay Report', $extracted, $corrected, $explainArr);
+        $res = $this->callOpenAI($payload);
+        if (!$res['ok']) {
+            return response()->json(['ok' => false, 'error' => $res['error'] ?? 'OpenAI error']);
+        }
+        $assistant = (string) ($res['assistant'] ?? '');
+        $parsed = $this->extractJsonFromString($assistant);
+
+        if ($parsed) {
+            $parsed['ok'] = true;
+            return response()->json($parsed);
         }
 
-        return response()->json($resp);
+        // If not JSON, put assistant text in 'corrected' and return
+        return response()->json([
+            'ok' => true,
+            'original' => $text,
+            'corrected' => $assistant ?: $text,
+            'explanations' => ['No structured explanations returned. See corrected text.'],
+            'raw_text' => $res['raw'] ?? $assistant,
+        ]);
     }
 
     /**
-     * 导出完整报告 DOCX（含 AI Score, Explanations, Suggestions, InlineDiff）
+     * POST /api/essay/export-docx
+     * Accepts JSON payload from frontend (title, extracted, corrected, scores, criterion_explanations, revision_suggestions, inline_diff_html, raw_grade_payload)
+     * Returns a streamed docx download.
      */
     public function exportDocx(Request $request)
     {
+        $payload = $request->all();
+
+        // Use PhpWord to build docx
         try {
-            $title = trim($request->input('title', 'Essay Report'));
-            $rubric = $request->input('rubric', '');
-            $scores = $request->input('scores', []);
-            $extracted = trim($request->input('extracted', ''));
-            $corrected = trim($request->input('corrected', ''));
-            $explanations = $request->input('explanations', []);
-            $suggestions = $request->input('suggestions', []);
-            $inlineDiff = $request->input('diffHtml', '');
-
             $phpWord = new PhpWord();
-            $section = $phpWord->addSection([
-                'marginTop' => 800,
-                'marginBottom' => 800,
-                'marginLeft' => 1000,
-                'marginRight' => 1000,
-            ]);
+            $section = $phpWord->addSection(['marginTop' => 600, 'marginBottom' => 600]);
 
-            $section->addText("Essay Report", ['bold' => true, 'size' => 18, 'color' => '1F4E79']);
-            $section->addTextBreak(1);
-            $section->addText("Title: {$title}", ['bold' => true, 'size' => 12]);
-            if ($rubric) $section->addText("Rubric: {$rubric}", ['italic' => true, 'size' => 11]);
-            $section->addTextBreak(1);
+            $title = $payload['title'] ?? 'Essay Report';
+            $section->addTitle(htmlentities($title), 1);
 
-            $scores = array_merge([
-                'content' => null,
-                'communicative' => null,
-                'organisation' => null,
-                'language' => null,
-                'total' => null
-            ], (array)$scores);
-
-            $table = $section->addTable([
-                'borderSize' => 6,
-                'borderColor' => '999999',
-                'alignment' => JcTable::CENTER,
-                'cellMargin' => 80
-            ]);
-            $table->addRow();
-            $table->addCell(3000)->addText('Criterion', ['bold' => true]);
-            $table->addCell(1000)->addText('Score', ['bold' => true]);
-            $table->addCell(1000)->addText('Range', ['bold' => true]);
-
-            $criteria = [
-                'Content' => $scores['content'],
-                'Communicative' => $scores['communicative'],
-                'Organisation' => $scores['organisation'],
-                'Language' => $scores['language'],
-                'Total' => $scores['total'],
-            ];
-
-            foreach ($criteria as $key => $val) {
+            // Metadata / Scores (only include if present)
+            $scores = $payload['scores'] ?? ($payload['raw_grade_payload']['scores'] ?? null);
+            if ($scores && is_array($scores)) {
+                $section->addTextBreak(1);
+                $section->addText('Scores:', ['bold' => true]);
+                $table = $section->addTable();
                 $table->addRow();
-                $table->addCell(3000)->addText($key);
-                $table->addCell(1000)->addText($val !== null ? (string)$val : '-');
-                $table->addCell(1000)->addText($key === 'Total' ? '/20' : '0–5');
+                $table->addCell(4000)->addText('Criterion', ['bold' => true]);
+                $table->addCell(2000)->addText('Score', ['bold' => true]);
+                foreach (['content','communicative','organisation','language','total'] as $k) {
+                    if (isset($scores[$k])) {
+                        $table->addRow();
+                        $table->addCell(4000)->addText(ucfirst($k));
+                        $table->addCell(2000)->addText((string)$scores[$k]);
+                    }
+                }
             }
 
-            $section->addTextBreak(1);
-
-            $section->addText("Criterion Explanations", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
-            if (empty($explanations)) {
-                $section->addText("No detailed explanations returned by the API.", ['italic' => true]);
-            } else {
-                foreach ($explanations as $line) $section->addListItem(strip_tags($line), 0, ['size' => 11]);
+            // Criterion Explanations
+            $explanations = $payload['criterion_explanations'] ?? $payload['explanations'] ?? [];
+            if ($explanations && is_array($explanations) && count($explanations)) {
+                $section->addTextBreak(1);
+                $section->addText('Criterion Explanations:', ['bold' => true]);
+                foreach ($explanations as $ex) {
+                    $section->addListItem(htmlentities((string)$ex), 0);
+                }
             }
-            $section->addTextBreak(1);
 
-            $section->addText("Revision Suggestions", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
-            if (empty($suggestions)) {
-                $section->addText("No revision suggestions returned by the API.", ['italic' => true]);
-            } else {
-                foreach ($suggestions as $line) $section->addListItem(strip_tags($line), 0, ['size' => 11]);
+            // Revision suggestions
+            $revs = $payload['revision_suggestions'] ?? $payload['revision_suggestions'] ?? $payload['revisionSuggestions'] ?? $payload['revision_suggestions'] ?? ($payload['raw_grade_payload']['suggestions'] ?? []);
+            if ($revs && is_array($revs) && count($revs)) {
+                $section->addTextBreak(1);
+                $section->addText('Revision Suggestions:', ['bold' => true]);
+                foreach ($revs as $r) {
+                    $section->addListItem(htmlentities((string)$r), 0);
+                }
             }
-            $section->addTextBreak(1);
 
-            $section->addText("Inline Diff", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
-            if ($inlineDiff) {
-                Html::addHtml($section, $inlineDiff, false, false);
-            } else {
-                $section->addText("No inline diff data available.", ['italic' => true]);
+            // Inline diff (HTML) — many teachers want this; insert as HTML if available
+            $inline = $payload['inline_diff_html'] ?? ($payload['raw_grade_payload']['inline_diff_html'] ?? '');
+            if ($inline) {
+                $section->addTextBreak(1);
+                $section->addText('Inline Diff:', ['bold' => true]);
+                // PhpWord supports basic HTML via Html::addHtml
+                try {
+                    PhpWordHtml::addHtml($section, $inline, false, false);
+                } catch (\Throwable $e) {
+                    // fallback: strip tags and show text
+                    $section->addText(strip_tags($inline));
+                }
             }
-            $section->addTextBreak(1);
 
-            $section->addText("Original Essay", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
-            $section->addText($extracted ?: '-', ['size' => 11]);
-            $section->addTextBreak(1);
+            // Original and Corrected
+            $original = $payload['original_text'] ?? $payload['extracted'] ?? '';
+            $corrected = $payload['corrected'] ?? '';
 
-            $section->addText("Corrected Essay", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
-            $section->addText($corrected ?: '-', ['size' => 11]);
-            $section->addTextBreak(1);
+            if ($original) {
+                $section->addTextBreak(1);
+                $section->addText('Original Essay:', ['bold' => true]);
+                $section->addText(htmlentities($original));
+            }
+            if ($corrected) {
+                $section->addTextBreak(1);
+                $section->addText('Corrected Essay:', ['bold' => true]);
+                $section->addText(htmlentities($corrected));
+            }
 
-            return response()->streamDownload(function () use ($phpWord) {
-                IOFactory::createWriter($phpWord, 'Word2007')->save('php://output');
-            }, 'essay-report.docx', [
+            // Stream download
+            $filename = Str::slug(substr($title, 0, 60)) ?: 'essay-report';
+            $filename .= '-' . date('Ymd-His') . '.docx';
+
+            $tempFile = sys_get_temp_dir() . '/' . $filename;
+            $objWriter = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+            $objWriter->save($tempFile);
+
+            // Return streamed response with proper headers
+            return response()->download($tempFile, $filename, [
                 'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
-                'Pragma' => 'no-cache',
-                'X-Accel-Buffering' => 'no',
-            ]);
+            ])->deleteFileAfterSend(true);
+
         } catch (\Throwable $e) {
-            return response()->json(['ok'=>false,'error'=>'DOCX export failed: '.$e->getMessage()], 500);
+            Log::error('DOCX export failed: ' . $e->getMessage());
+            return response()->json(['ok' => false, 'error' => 'DOCX export failed: ' . $e->getMessage()], 500);
         }
     }
 
-    public function exportDocxSmoke()
+    /**
+     * POST /api/essay/export-docx-test
+     * Simple smoke test docx to verify route and downloads
+     */
+    public function exportDocxSmoke(Request $request)
     {
-        $w = new PhpWord();
-        $s = $w->addSection();
-        $s->addTitle('Smoke OK', 1);
-        $s->addText('✅ Railway runtime and PhpWord work fine.');
+        try {
+            $phpWord = new PhpWord();
+            $section = $phpWord->addSection();
+            $section->addTitle('Hello — DOCX Smoke Test', 1);
+            $section->addText('This is a smoke test document to verify .docx download route.');
 
-        return response()->streamDownload(function () use ($w) {
-            IOFactory::createWriter($w, 'Word2007')->save('php://output');
-        }, 'smoke-test.docx', [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'Content-Disposition' => 'attachment; filename="smoke-test.docx"',
-            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
-            'Pragma' => 'no-cache',
-            'X-Accel-Buffering' => 'no',
-        ]);
-    }
+            $filename = 'smoke-essay-test-' . date('Ymd-His') . '.docx';
+            $tempFile = sys_get_temp_dir() . '/' . $filename;
+            $objWriter = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+            $objWriter->save($tempFile);
 
-    private function visionOCR(string $blob, string $mime): string
-    {
-        $apiKey = env('OPENAI_API_KEY');
-        $model  = env('OPENAI_MODEL', 'gpt-4o-mini');
-        $base   = rtrim(env('OPENAI_BASE_URL', 'https://api.openai.com/v1'), '/');
-        if (!$apiKey) throw new \RuntimeException('OPENAI_API_KEY missing');
+            return response()->download($tempFile, $filename, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            ])->deleteFileAfterSend(true);
 
-        $b64 = base64_encode($blob);
-        $payload = [
-            'model' => $model,
-            'messages' => [[
-                'role' => 'user',
-                'content' => [
-                    ['type'=>'text','text'=>"Extract all readable text. Return plain text only."],
-                    ['type'=>'image_url','image_url'=>['url'=>"data:{$mime};base64,{$b64}"]],
-                ],
-            ]],
-            'temperature' => 0.0,
-        ];
-
-        $res = Http::withHeaders([
-            'Authorization'=>"Bearer {$apiKey}",
-            'Content-Type'=>'application/json',
-        ])->post("{$base}/chat/completions", $payload);
-
-        if (!$res->successful()) {
-            throw new \RuntimeException('OpenAI OCR failed: '.json_encode($res->json()));
+        } catch (\Throwable $e) {
+            Log::error('DOCX smoke failed: ' . $e->getMessage());
+            return response()->json(['ok' => false, 'error' => 'DOCX smoke failed: ' . $e->getMessage()], 500);
         }
-        return trim($res->json('choices.0.message.content') ?? '');
-    }
-
-    private function imageExtractAndCorrect(array $imageBlobs, string $apiKey, string $model, string $base): array
-    {
-        $makeContent = function(string $type) use ($imageBlobs) {
-            $content = [[
-                'type' => 'text',
-                'text' => "Extract all readable English text from the images, then correct/improve it. Return JSON with keys: {extracted, corrected, explanations[]}.",
-            ]];
-            foreach ($imageBlobs as $blob) {
-                $b64 = base64_encode($blob);
-                $content[] = ['type'=>'image_url','image_url'=>['url'=>"data:image/png;base64,{$b64}"]];
-            }
-            return $content;
-        };
-
-        $res = Http::withHeaders([
-            'Authorization' => "Bearer {$apiKey}",
-            'Content-Type'  => 'application/json',
-        ])->post("{$base}/chat/completions", [
-            'model' => $model,
-            'messages' => [[ 'role'=>'user', 'content'=>$makeContent('image_url') ]],
-            'temperature' => 0.0,
-            'response_format' => ['type'=>'json_object'],
-        ]);
-
-        if (!$res->successful()) {
-            $detail = $res->json() ?: ['status'=>$res->status()];
-            throw new \RuntimeException('Vision extract+correct failed: '.json_encode($detail, JSON_UNESCAPED_UNICODE));
-        }
-
-        $content = $res->json('choices.0.message.content') ?? '{}';
-        return json_decode($content, true) ?: [];
-    }
-
-    private function buildDocxAndGetUrl(string $title, string $extracted, string $corrected, array $explanations): string
-    {
-        if (!class_exists(\PhpOffice\PhpWord\PhpWord::class)) {
-            throw new \RuntimeException('PhpOffice\\PhpWord not installed. Run: composer require phpoffice/phpword');
-        }
-
-        $phpWord = new \PhpOffice\PhpWord\PhpWord();
-        $phpWord->setDefaultFontName('Calibri');
-        $phpWord->setDefaultFontSize(11);
-
-        $section = $phpWord->addSection();
-        $section->addTitle('Essay Report', 1);
-        if ($title) { $section->addText("Title: {$title}", ['bold'=>true]); }
-        $section->addTextBreak(1);
-
-        $section->addTitle('Extracted Text', 2);
-        $section->addText($extracted !== '' ? $extracted : '-', []);
-        $section->addTextBreak(1);
-
-        $section->addTitle('Corrected / Improved', 2);
-        $section->addText($corrected !== '' ? $corrected : '-', []);
-        $section->addTextBreak(1);
-
-        if (!empty($explanations)) {
-            $section->addTitle('Explanations', 2);
-            foreach ($explanations as $ex) {
-                $section->addListItem($ex, 0, [], ['listType' => \PhpOffice\PhpWord\Style\ListItem::TYPE_BULLET_FILLED]);
-            }
-        }
-
-        if (!Storage::disk('public')->exists('essay_reports')) {
-            Storage::disk('public')->makeDirectory('essay_reports');
-        }
-        $filename = 'essay_report_'.date('Ymd_His').'.docx';
-        $fullPath = Storage::path('public/essay_reports/'.$filename);
-
-        $writer = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
-        $writer->save($fullPath);
-
-        return asset('storage/essay_reports/'.$filename);
     }
 }
