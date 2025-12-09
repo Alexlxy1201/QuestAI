@@ -1,20 +1,20 @@
 {{-- resources/views/essay-pro.blade.php --}}
-@extends('layouts.app')
+@extends('layouts.app')  
 
-@section('title', '✍️ Essay Pro — Two-Step OCR → Edit → Analyze')
+@section('title', '🧠 SmartMark — Essay grading for UASA & SPM') 
 
-@section('content')
-<div class="min-h-[70vh] flex flex-col items-center justify-center p-4">
+@section('content')  
+<div class="min-h-[70vh] flex flex-col items-center justify-center p-4"> 
   <div class="bg-white shadow-2xl rounded-2xl p-6 w-full max-w-6xl text-left transition-all duration-300 overflow-x-hidden">
 
     {{-- Header --}}
-    <div class="flex items-center justify-between gap-4 mb-4">
-      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
-        ✍️ Essay Pro — OCR → Edit → Analyze
+    <div class="flex items-center justify-between gap-4 mb-4"> 
+      <h1 class="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent"> 
+        🧠 SmartMark — Rater Buddy for UASA &amp; SPM
       </h1>
-      <div class="flex items-center gap-2">
-        <button id="btnExportDocx" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition">
-          ⬇️ Export (.docx)
+      <div class="flex items-center gap-2"> 
+        <button id="btnExportDocx" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition"> 
+          ⬇️ Export (.docx) 
         </button>
         <a href="{{ route('home') ?? url('/') }}" class="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 transition">Back</a>
       </div>
@@ -43,32 +43,55 @@
     <div class="grid lg:grid-cols-2 gap-6">
       {{-- Left: Inputs + Files + OCR --}}
       <div>
-        {{-- Title row --}}
-        <label class="block text-sm font-medium text-gray-700 mb-1">Essay Title</label>
-        <div class="flex gap-2">
-          <input id="title" type="text" placeholder="e.g., The Importance of Reading"
-                 class="flex-1 rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-          <button id="cameraTitleButton" class="px-3 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 text-sm">
-            📷 Take Photo
-          </button>
+        {{-- Question row --}}
+        <label class="block text-sm font-medium text-gray-700 mb-1">
+          Essay Question (prompt)
+        </label>
+        <div class="flex flex-col md:flex-row md:items-start gap-2">
+          <textarea
+            id="title"
+            rows="3"
+            placeholder="e.g., Write a story about a time you helped someone in need."
+            class="w-full md:flex-1 rounded-xl border-gray-200 px-3 py-2 text-sm md:text-base min-h-[80px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          ></textarea>
+          <div class="flex flex-row md:flex-col gap-2">
+            <button id="cameraTitleButton" class="px-3 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 text-sm whitespace-nowrap">
+              📷 Take Photo
+            </button>
+            <button id="uploadTitleButton" class="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm whitespace-nowrap">
+              📁 Upload from device
+            </button>
+          </div>
           <input type="file" id="cameraTitleInput" accept="image/*" capture="environment" class="hidden">
+          <input type="file" id="uploadTitleInput" accept="image/*" class="hidden">
         </div>
+        <p class="mt-1 text-xs text-gray-500">
+          Take a photo or upload the essay question. OCR will try to capture the full question text here.
+        </p>
 
-        {{-- Rubric --}}
+        {{-- Rubric selector (just for template picking) --}}
         <div class="mt-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">Rubric</label>
-          <select id="rubric" class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Rubric template
+          </label>
+          <select
+            id="rubric"
+            class="w-full rounded-xl border-gray-200 px-3 py-2 text-sm md:text-base focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            <option value="">Select exam &amp; part</option>
             <optgroup label="SPM">
-              <option value="SPM_P1">SPM — Part 1</option>
-              <option value="SPM_P2">SPM — Part 2</option>
-              <option value="SPM_P3">SPM — Part 3</option>
+              <option value="SPM — Part 1" selected>SPM — Part 1</option>
+              <option value="SPM — Part 2">SPM — Part 2</option>
+              <option value="SPM — Part 3">SPM — Part 3</option>
             </optgroup>
             <optgroup label="UASA">
-              <option value="UASA_P1">UASA — Part 1</option>
-              <option value="UASA_P2">UASA — Part 2</option>
+              <option value="UASA — Part 1">UASA — Part 1</option>
+              <option value="UASA — Part 2">UASA — Part 2</option>
             </optgroup>
           </select>
-          <p class="text-xs text-gray-400 mt-1">Scoring dimensions: Content · Communicative Achievement · Organisation · Language (0–5 each).</p>
+          <p class="text-xs text-gray-400 mt-1">
+            This dropdown only picks a template. The actual scoring will always use the text in “Rubric Reference” below (even if you edit it).
+          </p>
         </div>
 
         {{-- Files --}}
@@ -81,7 +104,7 @@
               📷 Take Photo
             </button>
             <button id="chooseButton" class="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700">
-              📁 Choose File(s)
+              📁 Upload from device
             </button>
             <label class="inline-flex items-center gap-2 text-sm text-gray-700">
               <input id="stitchToggle" type="checkbox" class="rounded" checked>
@@ -93,12 +116,12 @@
           <div id="previewWrap" class="mt-3 hidden">
             <img id="previewImg" class="max-h-56 rounded-xl shadow border border-gray-100 mx-auto hidden" alt="preview image">
             <div id="previewPdf" class="text-sm text-gray-600 mt-2 hidden"></div>
-            <canvas id="pdfCanvas" class="hidden max-h-56 rounded-xl shadow border border-gray-100 mx-auto"></canvas>
+            <canvas id="pdfCanvas" class="hidden max-h-56 rounded-2xl shadow border border-gray-100 mx-auto"></canvas>
             <div id="previewMeta" class="text-xs text-gray-500 mt-1"></div>
             <div id="thumbGrid" class="mt-2 grid grid-cols-6 gap-2"></div>
           </div>
 
-          {{-- Step 1 Actions: OCR only (no changes to text) --}}
+          {{-- Step 1 Actions --}}
           <div class="mt-4 flex items-center gap-3 flex-wrap">
             <button id="btnExtract" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">
               🧠 Extract Text (OCR)
@@ -115,7 +138,7 @@
         <textarea id="essayText" rows="16" placeholder="After OCR, the original text will appear here. You may freely edit it before analysis."
                   class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
 
-        {{-- Step 3 Actions: Analyze AFTER editing --}}
+        {{-- Step 3 Actions --}}
         <div class="mt-4 flex flex-wrap items-center gap-3">
           <button id="btnAnalyze" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700" disabled>
             📊 Analyze & Grade (AI)
@@ -128,14 +151,16 @@
       </div>
     </div>
 
-    {{-- Rubric reference --}}
+    {{-- Rubric reference (this is what AI uses) --}}
     <div class="mt-6">
       <label class="block text-sm font-medium text-gray-700 mb-1">Rubric Reference (editable)</label>
       <textarea id="rubricRef" rows="8" class="w-full rounded-xl border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
-      <p class="text-xs text-gray-400 mt-1">This stays local and is not sent to the backend.</p>
+      <p class="text-xs text-gray-400 mt-1">
+        This text is the actual marking rubric used by AI. You can edit it freely; changing the dropdown above will just replace it with another template.
+      </p>
     </div>
 
-    {{-- Score (kept visible but will be filled when available) --}}
+    {{-- Score --}}
     <div class="bg-white rounded-2xl border mt-6 p-4 hidden" id="resultCard">
       <div class="flex items-center justify-between gap-4">
         <h2 class="text-xl font-bold">AI Score</h2>
@@ -182,7 +207,7 @@
       </div>
     </div>
 
-    {{-- Annotated Corrections (optional) --}}
+    {{-- Annotated Corrections --}}
     <div class="bg-white rounded-2xl border mt-6 p-4 hidden" id="annotCard">
       <div class="flex items-center justify-between">
         <h2 class="text-xl font-bold">Annotated Changes</h2>
@@ -226,7 +251,6 @@
 
 {{-- ===== Styles ===== --}}
 <style>
-  /* Keep layout stable when details open/close or scrollbar appears */
   html { scrollbar-gutter: stable both-edges; }
   body { min-height: 100vh; overflow-y: scroll; }
 
@@ -264,8 +288,8 @@ const CSRF    = document.querySelector('meta[name="csrf-token"]')?.getAttribute(
 const $ = (id)=>document.getElementById(id);
 
 // Inputs
-const titleEl = $('title');
-const rubricEl = $('rubric');
+const titleEl   = $('title');
+const rubricEl  = $('rubric');
 const essayText = $('essayText');
 const rubricRef = $('rubricRef');
 
@@ -289,7 +313,10 @@ const btnExportDocx = $('btnExportDocx');
 const overlay = $('overlay');
 
 // Title snap
-const cameraTitleButton = $('cameraTitleButton'), cameraTitleInput = $('cameraTitleInput');
+const cameraTitleButton = $('cameraTitleButton'),
+      cameraTitleInput  = $('cameraTitleInput'),
+      uploadTitleButton = $('uploadTitleButton'),
+      uploadTitleInput  = $('uploadTitleInput');
 
 // Results
 const resultCard = $('resultCard');
@@ -304,70 +331,154 @@ const annotCard = $('annotCard'), origTextEl = $('origText'), corrTextEl = $('co
 const historyList = $('historyList'), histCount = $('histCount');
 
 // State
-let selectedFiles = []; // chosen files (images and/or single pdf)
+let selectedFiles = [];
 let lastOCRText = '';
 let history = [];
 try { history = JSON.parse(localStorage.getItem('essayProHistory') || '[]'); } catch (_) { history = []; }
-renderHistory();
-
-// Default rubric text — DO NOT MODIFY the rubric content (user requested original rubric)
-rubricRef.value = `SPM Writing
-Part 1 — Assessment scale (5/3/1/0):
-5: Content is fully relevant; readers are well informed; answer all the questions asked; conveys simple ideas using an appropriate text type and tone smoothly; uses simple linkers and at least one cohesive device; punctuations are used correctly and ideas are well-structured; basic vocabulary are used appropriately and uses simple grammatical forms with good control; errors are noticeable but meaning can still be determined.
-4: Performances shared features of Score 3 and 5
-3: Slight irrelevance/omission; misinterpreted one or two questions but readers are generally informed; simple ideas expressed simply; relies on common linkers and no cohesive device is used; use basic vocabulary and simple grammar with some degree of control; errors are sometimes inaccurate and may affect understanding.
-2: Performances shared features of Score 1 and 3
-1: Task may be misunderstood; readers are minimally informed; mostly short, disconnected sentences; ideas are simple but not always communicated successfully; weak cohesion; incorrect use of punctuation; vocabulary mainly isolated words/phrases; limited control of simple grammar. 0: Completely irrelevant.
-
-Part 2 — Assessment scale:
-5: Content fully relevant; reader well informed, answer all the questions appropriately; conveys straightforward ideas using an appropriate text type and tone smoothly; coherent organization with a variety of cohesive devices; fairly wide everyday vocabulary with occasional misuse of less common words; good control of simple and some complex grammar; errors do not hinder communication.
-4: Performances shared features of Score 3 and 5
-3: Slight irrelevance/omission; misinterpreted one or two questions but reader generally informed; conveys simple ideas using an appropriate text type and tone smoothly; use simple sentence connectors and some cohesive devices appropriately; use basic vocabulary and simple grammar with good control; errors are noticeable but meaning can still be determined.
-2: Performances shared features of Score 1 and 3
-1: Task may be misunderstood; readers are minimally informed; simple ideas expressed simply; relies on common linkers and no cohesive device is used; ; incorrect use of punctuation; use basic vocabulary and simple grammar with some degree of control; errors are sometimes inaccurate and may affect understanding.
-0: Content is totally irrelevant and any performance is below score 1.
-
-Part 3 — Assessment scale:
-5: Content fully relevant and answered all the questions; communicative purpose achieved; complex ideas are delivered smoothly; well organized with a variety of cohesive devices that are used effectively; use wide vocabulary including some less common vocabulary correctly; flexible use of simple + complex grammar with good control; only occasional slips.
-4: Performances shared features of Score 3 and 5
-3: Slight irrelevance/omission; misinterpreted one or two questions but reader generally informed and engaged; conveys straightforward ideas using an appropriate text type and tone smoothly; coherent organization with a variety of cohesive devices; fairly wide everyday vocabulary with occasional misuse of less common words; good control of simple and some complex grammar; errors do not hinder communication.
-2: Performances shared features of Score 1 and 3
-1: Only manage to answer one sub-question; misinterpreted one or two questions but reader generally informed; conveys simple ideas using an appropriate text type and tone smoothly; use simple sentence connectors and some cohesive devices appropriately; use basic vocabulary and simple grammar with good control; errors are noticeable but meaning can still be determined.
-
-UASA / Form 3 Writing
-Part 1:
-5: Content is fully relevant; readers are well informed; answer all the questions asked; conveys simple ideas using an appropriate text type and tone smoothly; uses simple linkers and at least one cohesive device; punctuations are used correctly and ideas are well-structured; basic vocabulary are used appropriately and uses simple grammatical forms with good control; errors are noticeable but meaning can still be determined.
-4: Performances shared features of Score 3 and 5
-3: Slight irrelevance/omission; misinterpreted one or two questions but readers are generally informed; simple ideas expressed simply; relies on common linkers and no cohesive device is used; use basic vocabulary and simple grammar with some degree of control; errors are sometimes inaccurate and may affect understanding.
-2: Performances shared features of Score 1 and 3
-1: Task may be misunderstood; readers are minimally informed; mostly short, disconnected sentences; ideas are simple but not always communicated successfully; weak cohesion; incorrect use of punctuation; vocabulary mainly isolated words/phrases; limited control of simple grammar. 0: Completely irrelevant.
-
-Part 2:
-5: Content fully relevant; reader well informed, answer all the questions appropriately; conveys straightforward ideas using an appropriate text type and tone smoothly; coherent organization with a variety of cohesive devices; fairly wide everyday vocabulary with occasional misuse of less common words; good control of simple and some complex grammar; errors do not hinder communication.
-4: Performances shared features of Score 3 and 5
-3: Slight irrelevance/omission; misinterpreted one or two questions but reader generally informed; conveys simple ideas using an appropriate text type and tone smoothly; use simple sentence connectors and some cohesive devices appropriately; use basic vocabulary and simple grammar with good control; errors are noticeable but meaning can still be determined.
-2: Performances shared features of Score 1 and 3
-1: Task may be misunderstood; readers are minimally informed; simple ideas expressed simply; relies on common linkers and no cohesive device is used; ; incorrect use of punctuation; use basic vocabulary and simple grammar with some degree of control; errors are sometimes inaccurate and may affect understanding.
-0: Content is totally irrelevant and any performance is below score 1.
-`;
 
 /* =========================
-   Utility: enable Analyze when user types/pastes into essayText (no OCR required)
+   Rubric templates per part
 ========================= */
-function updateActionButtons(){
-  const hasText = (essayText.value || '').trim().length > 0;
-  btnAnalyze.disabled = !hasText;
-  btnSuggest.disabled = !hasText;
+const RUBRIC_TEMPLATES = {
+  "SPM — Part 1": `SPM English Writing – Paper 2 (Part 1 – Email / short communicative message, about 80–100 words)
+
+Criteria (0–5 each): Content, Communicative Achievement, Organisation, Language.
+Total: 20 marks.
+
+CONTENT
+5: All required points are covered; content fully relevant to task; target reader fully informed.
+3: Most required points covered; some minor omission or slight irrelevance; reader generally informed.
+1: Little relevant content; serious omissions or misunderstanding of task; reader hardly informed.
+0: Below band 1.
+
+COMMUNICATIVE ACHIEVEMENT
+5: Email format and tone appropriate for audience and purpose; message clear, polite and engaging.
+3: Generally appropriate; some lapses in style/register but main purpose still clear.
+1: Inappropriate or confusing; purpose not clear; task only partly achieved.
+0: Below band 1.
+
+ORGANISATION
+5: Clear opening/closing; ideas in logical order; uses basic linkers (and, but, because, so, then, also) effectively.
+3: Some organisation; ideas grouped but uneven; linking sometimes repetitive or inaccurate.
+1: Very little organisation; mostly isolated sentences.
+0: Below band 1.
+
+LANGUAGE
+5: Good control of simple grammar (present/past, simple tenses, pronouns); some attempts at longer sentences; basic vocabulary used appropriately; errors do not impede understanding.
+3: Adequate range of simple structures; frequent but mostly non-obstructive errors.
+1: Very limited range; frequent errors which often make meaning difficult.
+0: Below band 1.`,
+
+  "SPM — Part 2": `SPM English Writing – Paper 2 (Part 2 – Continuous writing, about 125–150 words)
+
+Same four criteria: Content, Communicative Achievement, Organisation, Language (0–5 each, total 20).
+
+CONTENT
+5: Fully answers the question, including all required parts; ideas developed with relevant details and examples.
+3: Main ideas present but development uneven; some points may be underdeveloped or partly addressed.
+1: Very few relevant ideas; task only minimally attempted.
+0: Below band 1.
+
+COMMUNICATIVE ACHIEVEMENT
+5: Text type (e.g. article, essay, narrative) and tone are consistently appropriate for the task and target reader.
+3: Generally appropriate; some sections feel too informal / too formal or not clearly aligned to the task.
+1: Style confusing or inconsistent; purpose not clear.
+0: Below band 1.
+
+ORGANISATION
+5: Clear paragraphing (introduction, body, ending); logical sequencing; variety of linking words/phrases.
+3: Some paragraphing and linking but may be repetitive; progression of ideas sometimes abrupt.
+1: Little sense of paragraphing; ideas not clearly ordered.
+0: Below band 1.
+
+LANGUAGE
+5: Reasonably wide everyday vocabulary; mix of simple and some complex sentences; errors present but do not seriously weaken communication.
+3: Limited but sufficient range; grammar and vocabulary errors sometimes affect clarity but overall meaning is understandable.
+1: Very limited vocabulary and grammar; errors frequently obscure meaning.
+0: Below band 1.`,
+
+  "SPM — Part 3": `SPM English Writing – Paper 2 (Part 3 – Extended writing, article / review / story, about 200 words or more)
+
+Criteria: Content, Communicative Achievement, Organisation, Language (0–5; total 20).
+
+CONTENT
+5: Fully relevant; all bullet points or guiding questions addressed; ideas are rich, developed and supported with details.
+3: Most points covered but development uneven; some ideas underdeveloped or repetitive.
+1: Limited or mostly irrelevant content; task weakly addressed.
+0: Below band 1.
+
+COMMUNICATIVE ACHIEVEMENT
+5: Clear sense of genre (article/review/story); tone and register suit the specified reader (e.g. school magazine); purpose fully achieved.
+3: Genre mostly clear but not always sustained; tone sometimes inconsistent.
+1: Genre or purpose unclear; task only partly fulfilled.
+0: Below band 1.
+
+ORGANISATION
+5: Coherent overall structure; effective beginning, development and ending; cohesive devices used flexibly (sequencing, referencing, contrast, cause & effect).
+3: Some organisational control; ideas generally linked but with occasional jumps or weak paragraphing.
+1: Poor organisation; ideas in a list-like or random order.
+0: Below band 1.
+
+LANGUAGE
+5: Fairly wide range of vocabulary (including some less common words); mix of simple and complex sentences with generally good control; errors occasional and do not hinder communication.
+3: Sufficient range for the task; errors in grammar and vocabulary noticeable but meaning usually clear.
+1: Very restricted range; frequent serious errors that make understanding difficult.
+0: Below band 1.`,
+
+  "UASA — Part 1": `UASA Lower Secondary Writing – Part 1 (short response / guided writing)
+
+Two combined scales are commonly used: 
+1) Content & Communicative Achievement (0–5)
+2) Organisation & Language (0–5)
+Total: 10 marks.
+
+CONTENT & COMMUNICATIVE ACHIEVEMENT
+5: All required content included; task fully completed; ideas clearly conveyed and appropriate for the intended reader.
+3: Most required points included; message usually clear though some parts may be brief or less relevant.
+1: Very little relevant content; task only minimally attempted.
+0: Below band 1.
+
+ORGANISATION & LANGUAGE
+5: Ideas flow logically; basic connectors and a few cohesive devices used (and, but, because, first, then, finally); simple grammar and vocabulary mostly accurate; errors do not prevent understanding.
+3: Some organisation but sometimes choppy; limited range of language; errors sometimes affect clarity but overall meaning still understandable.
+1: Weak organisation; very limited language; frequent errors often make understanding difficult.
+0: Below band 1.`,
+
+  "UASA — Part 2": `UASA Lower Secondary Writing – Part 2 (longer continuous writing)
+
+Same banded scales:
+1) Content & Communicative Achievement (0–5)
+2) Organisation & Language (0–5)
+Total: 10 marks (can be scaled according to paper).
+
+CONTENT & COMMUNICATIVE ACHIEVEMENT
+5: Fully answers the question; purpose and audience awareness clear throughout; ideas developed with some detail or examples.
+3: Main ideas present but development uneven; some required points may be brief or partly addressed.
+1: Limited or mostly off-task content; purpose unclear.
+0: Below band 1.
+
+ORGANISATION & LANGUAGE
+5: Clear paragraphing; logical sequencing of ideas; connectives used appropriately; vocabulary and grammar mostly accurate with some variety; occasional errors do not hinder meaning.
+3: Some paragraphing and linking but may be repetitive; language range limited though message generally clear.
+1: Little sense of paragraphing; many basic errors; difficult to follow.
+0: Below band 1.`
+};
+
+// apply initial template
+function applyRubricTemplateFromSelect() {
+  const key = rubricEl.value;
+  rubricRef.value = RUBRIC_TEMPLATES[key] || '';
 }
-// enable listening for input
-essayText.addEventListener('input', updateActionButtons);
-document.addEventListener('DOMContentLoaded', updateActionButtons);
+applyRubricTemplateFromSelect();
+rubricEl.addEventListener('change', applyRubricTemplateFromSelect);
 
 /* =========================
    File Selection
 ========================= */
-chooseButton.addEventListener('click',()=>fileInput.click());
-cameraButton.addEventListener('click',()=>cameraInput.click());
+renderHistory();
+
+chooseButton.addEventListener('click', ()=>fileInput.click());
+cameraButton.addEventListener('click', ()=>cameraInput.click());
 fileInput.addEventListener('change', handleFiles);
 cameraInput.addEventListener('change', handleFiles);
 
@@ -375,16 +486,18 @@ async function handleFiles(e){
   const files = Array.from(e.target.files || []);
   if(!files.length) return;
 
-  // Enforce: single PDF OR one/more images
-  const pdfs = files.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
-  const imgs = files.filter(f => f.type.startsWith('image/'));
+  const pdfs = files.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test((f.name || '')));
+  const imgs = files.filter(f => {
+    const name = (f.name || '').toLowerCase();
+    return (f.type && f.type.startsWith('image/')) ||
+           /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(name);
+  });
 
   if (pdfs.length > 1 || (pdfs.length === 1 && imgs.length > 0)) {
     alert('Please choose either a single PDF or images (not both).');
     return;
   }
 
-  // Size hint
   const total = files.reduce((s,f)=>s+f.size,0);
   const limit = pdfs.length ? 20*1024*1024 : 25*1024*1024;
   if (total > limit) {
@@ -397,13 +510,13 @@ async function handleFiles(e){
   thumbGrid.innerHTML = '';
   previewMeta.textContent = `Files: ${files.length} · Total: ${humanSize(total)}`;
 
-  // Reset UI enabling Step 1
   btnExtract.disabled = false;
+  btnAnalyze.disabled = true;
+  btnSuggest.disabled = true;
   analyzeStatus.textContent = '';
   extractStatus.textContent = '';
 
   if (pdfs.length === 1) {
-    // Show simple PDF preview (first page)
     previewImg.classList.add('hidden');
     previewPdf.classList.remove('hidden');
     previewPdf.textContent = `PDF selected: ${pdfs[0].name}`;
@@ -411,7 +524,6 @@ async function handleFiles(e){
     return;
   }
 
-  // Images: show thumbnails
   for (const f of imgs) {
     const url = URL.createObjectURL(f);
     const im = document.createElement('img');
@@ -423,7 +535,7 @@ async function handleFiles(e){
 }
 
 /* =========================
-   Step 1: OCR only (no changes)
+   Step 1: OCR
 ========================= */
 btnExtract.addEventListener('click', doOCR);
 
@@ -438,35 +550,37 @@ async function doOCR(){
   btnSuggest.disabled = true;
 
   try {
-    const pdfs = selectedFiles.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
-    const imgs = selectedFiles.filter(f => f.type.startsWith('image/'));
+    const pdfs = selectedFiles.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test((f.name || '')));
+    const imgs = selectedFiles.filter(f => {
+      const name = (f.name || '').toLowerCase();
+      return (f.type && f.type.startsWith('image/')) ||
+             /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(name);
+    });
 
     let text = '';
 
     if (pdfs.length === 1) {
-      // Send the PDF directly to OCR endpoint
       text = await ocrSingle(pdfs[0]);
     } else if (imgs.length > 0) {
-      // Either stitch and send once, or OCR each image and concatenate (no extra labels, no trims)
       if (stitchToggle.checked && imgs.length > 1) {
         const stitched = await stitchImages(imgs);
         showStitchedPreview(stitched);
         const stitchedFile = dataURLtoFile(stitched, `images_bundle_${Date.now()}.jpg`);
         text = await ocrSingle(stitchedFile);
       } else if (imgs.length === 1) {
-        text = await ocrSingle(imgs[0]);
+        const normalized = await normalizeImageFile(imgs[0]);
+        text = await ocrSingle(normalized);
       } else {
-        // Multi-image, per-image OCR concatenate WITHOUT adding markers or trimming
         const chunks = [];
         for (const f of imgs) {
-          const t = await ocrSingle(f);
-          chunks.push(t); // keep as-is
+          const normalized = await normalizeImageFile(f);
+          const t = await ocrSingle(normalized);
+          chunks.push(t);
         }
-        text = chunks.join('\n\n'); // minimal separation only
+        text = chunks.join('\n\n');
       }
     }
 
-    // Keep original OCR output "as-is" (no trim, no decoration)
     lastOCRText = (text || '');
 
     if (!lastOCRText) {
@@ -475,11 +589,8 @@ async function doOCR(){
       return;
     }
 
-    // Put OCR text into editor for manual editing
     essayText.value = lastOCRText;
-    updateActionButtons();
 
-    // Enable Step 3 after user has something to edit
     btnAnalyze.disabled = false;
     btnSuggest.disabled = false;
 
@@ -495,212 +606,71 @@ async function doOCR(){
 async function ocrSingle(file){
   const fd = new FormData();
   fd.append('file', file, file.name || 'upload.bin');
+  fd.append('mode', 'essay');
   const res = await fetch(ORIGIN + '/api/ocr', { method:'POST', headers: { 'X-CSRF-TOKEN': CSRF }, body: fd });
   const json = await res.json().catch(()=>({}));
   if (!res.ok) throw new Error('OCR error: ' + (json?.error || res.status));
-  // Return whichever field server uses; do not trim/modify
   return json.text ?? json.extracted ?? json.ocr ?? '';
 }
 
 /* =========================
-   Robust parse for plain-text/HTML server responses
-   (attempt to extract /5 /20 scores and rationales)
-========================= */
-function parseServerResponse(rawText){
-  const out = {
-    scores: { content: null, communicative: null, organisation: null, language: null, total: null },
-    rationales: [],
-    suggestions: [],
-    raw_text: rawText || ''
-  };
-
-  if(!rawText) return out;
-
-  // Try to convert HTML -> visible text safely
-  let plain;
-  try {
-    const dp = new DOMParser();
-    const doc = dp.parseFromString(rawText, 'text/html');
-    doc.querySelectorAll('script,style,noscript').forEach(n => n.remove());
-    plain = doc.body ? doc.body.textContent || '' : rawText;
-  } catch(e){
-    plain = rawText.replace(/<\/?[^>]+(>|$)/g, '');
-  }
-  plain = (plain || '').replace(/\r/g,'').replace(/\t/g,' ').trim();
-
-  const lines = plain.split('\n').map(l=> l.replace(/\s+/g,' ').trim()).filter(Boolean);
-  const joinAll = lines.join('\n');
-
-  const findScore = (text, names) => {
-    for(const n of names){
-      const re1 = new RegExp(n + '\\s*[:\\-–—]?\\s*(\\d)\\s*\\/\\s*5', 'i');
-      const re2 = new RegExp(n + '\\s*[:\\-–—]?\\s*(\\d)\\s*(?:$|\\s|\\W)', 'i');
-      const m1 = text.match(re1);
-      if(m1) return Number(m1[1]);
-      const m2 = text.match(re2);
-      if(m2) {
-        const v = Number(m2[1]);
-        if(!isNaN(v) && v>=0 && v<=5) return v;
-      }
-    }
-    return null;
-  };
-
-  out.scores.content = findScore(joinAll, ['Content','CONTENT','content']);
-  out.scores.communicative = findScore(joinAll, ['Communicative','communicative','Communicative Achievement','Communicative:']);
-  out.scores.organisation = findScore(joinAll, ['Organisation','organization','Organisation','Organisation:','Organisation']);
-  out.scores.language = findScore(joinAll, ['Language','language','Language:']);
-
-  const mTotal = joinAll.match(/(?:Total|Overall total|Overall|Overall score)\s*[:\-–—]?\s*(\d{1,2})\s*\/\s*20/i) ||
-                 joinAll.match(/(\d{1,2})\s*\/\s*20/);
-  if(mTotal) out.scores.total = Number(mTotal[1]);
-
-  // Fallback: find all /5 occurrences and map to criteria order if four found
-  if([out.scores.content, out.scores.communicative, out.scores.organisation, out.scores.language].every(x=> x === null)){
-    const all5 = Array.from(joinAll.matchAll(/(\d)\/5/g)).map(m=>Number(m[1]));
-    if(all5.length >= 4){
-      out.scores.content = all5[0];
-      out.scores.communicative = all5[1];
-      out.scores.organisation = all5[2];
-      out.scores.language = all5[3];
-      if(!out.scores.total){
-        out.scores.total = all5.slice(0,4).reduce((a,b)=>a+b,0);
-      }
-    }
-  }
-
-  // Collect rationales: lines that start with criterion name or bullet points or lines with /5 or keywords
-  const rationaleCandidates = [];
-  for(const line of lines){
-    if(/^(Content|Communicative|Organisation|Organisation|Language|Overall|Overall total)\b/i.test(line)){
-      rationaleCandidates.push(line);
-      continue;
-    }
-    if(/^[\u2022\-\*]\s+/.test(line) || /^[\d]+\.\s+/.test(line)){
-      rationaleCandidates.push(line);
-      continue;
-    }
-    if(/\/5\b|\/20\b/.test(line)) rationaleCandidates.push(line);
-    if(line.length>30 && /(vocab|vocabulary|grammar|cohesion|cohesive|organis|communicat|relevant|inform)/i.test(line)) rationaleCandidates.push(line);
-  }
-  out.rationales = Array.from(new Set(rationaleCandidates)).slice(0,60);
-
-  const suggestionLines = lines.filter(l => /suggestion|revise|revision|improv|improve|try to|consider|avoid|should|might|could/i.test(l));
-  out.suggestions = Array.from(new Set(suggestionLines)).slice(0,40);
-
-  if(out.rationales.length === 0){
-    out.rationales = lines.slice(0,6);
-  }
-
-  return out;
-}
-
-/* =========================
-   Analyze: robust handler for JSON OR plain text/HTML
-   Replaces simpler analyzeEdited implementation
+   Step 3: Analyze AFTER editing
+   👉 Use rubricRef text as the true rubric
 ========================= */
 btnAnalyze.addEventListener('click', analyzeEdited);
 btnSuggest.addEventListener('click', suggestCorrections);
 
 async function analyzeEdited(){
   const text = (essayText.value || '').trim();
-  if (!text) return alert('Empty text. Please OCR or paste/type text, then analyze.');
+  if (!text) return alert('Empty text. Please OCR first, then edit, then analyze.');
 
   overlay.classList.add('show');
   analyzeStatus.textContent = 'Analyzing…';
   btnAnalyze.disabled = true;
 
   try {
+    const rubricText  = rubricRef.value || '';    // 真正用于评分的 rubric
+    const rubricLabel = rubricEl.value || '';     // 仅作显示用（SPM — Part 1 等）
+
     const payload = {
       title: titleEl.value || '',
-      rubric_code: rubricEl.value || '',
-      rubric_text: rubricRef.value || '',
-      text,
-      prompt_instructions: "Use rubric_text verbatim as the scoring rules. Do NOT paraphrase the rubric. Return structured JSON with scores, rationales, suggestions and (if possible) inline_diff_html. If unable to return JSON, plain text or HTML summary is acceptable."
+      rubric: rubricText,         // 确保后端如果看 rubric，就用这一段文字
+      rubric_ref: rubricText,     // 兼容已有实现：rubric_ref 也给同样内容
+      rubric_label: rubricLabel,  // 可选：后端如果想知道选的是哪一类（显示用）
+      need_explanation: true,
+      text
     };
-
-    const controller = new AbortController();
-    const timeoutMs = 45_000;
-    const tid = setTimeout(()=>controller.abort(), timeoutMs);
 
     const res = await fetch(ORIGIN + '/api/grade', {
       method:'POST',
       headers: { 'Content-Type':'application/json', 'X-CSRF-TOKEN': CSRF },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    }).catch(err => { throw err; });
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json().catch(()=>({}));
+    if (!res.ok || !json.ok) throw new Error(json.error || 'Grade failed.');
 
-    clearTimeout(tid);
+    renderScore(json, rubricLabel);
+    analyzeStatus.textContent = '✅ Done.';
+    window.__lastGrade = json;
 
-    const resText = await res.text().catch(()=>null);
-
-    if((!resText || !resText.trim()) && res.ok){
-      analyzeStatus.textContent = '❌ Analyze returned empty body.';
-      window.__lastGrade = { raw_text: '' };
-      alert('Server returned empty body. Check backend.');
-      return;
-    }
-
-    let json = null;
-    try { json = resText ? JSON.parse(resText) : null; } catch(e){ json = null; }
-
-    if(json && (typeof json === 'object')){
-      // Structured JSON: use it directly
-      window.__lastGrade = json;
-      renderScore(json, rubricEl.value);
-      analyzeStatus.textContent = '✅ Done (parsed JSON).';
-      pushHistory({
-        time: new Date().toLocaleString(),
-        title: titleEl.value || '',
-        rubric: rubricEl.value || '',
-        extracted: lastOCRText || '',
-        corrected: text,
-        explanations: (json.rationales || json.explanations || json.criteria_explanations || json.rubric_breakdown || [])
-      });
-      return;
-    }
-
-    // Not JSON — parse plain/HTML text
-    const parsed = parseServerResponse(resText || '');
-
-    const payloadLike = {
-      scores: parsed.scores,
-      rationales: parsed.rationales,
-      suggestions: parsed.suggestions,
-      inline_diff_html: ''
-    };
-    payloadLike.raw_text = parsed.raw_text;
-
-    window.__lastGrade = payloadLike;
-    renderScore(payloadLike, rubricEl.value);
-
-    analyzeStatus.textContent = '✅ Done (parsed plain text / HTML).';
     pushHistory({
       time: new Date().toLocaleString(),
       title: titleEl.value || '',
-      rubric: rubricEl.value || '',
+      rubric: rubricLabel || '',
       extracted: lastOCRText || '',
       corrected: text,
-      explanations: parsed.rationales
+      explanations: (json.rationales || json.explanations || json.criteria_explanations || json.rubric_breakdown || [])
     });
-
-  } catch (err) {
-    console.error('[Analyze] error', err);
+  } catch (e) {
+    console.error(e);
     analyzeStatus.textContent = '❌ Analyze failed.';
-    if (err.name === 'AbortError') {
-      alert('Request timed out after 45s. Check server health or increase timeout.');
-    } else {
-      alert('Analyze failed: ' + (err.message || err));
-    }
+    alert(e.message || 'Analyze failed.');
   } finally {
     overlay.classList.remove('show');
     btnAnalyze.disabled = false;
   }
 }
 
-/* =========================
-   Suggest Corrections (existing behavior)
-========================= */
 async function suggestCorrections(){
   const text = (essayText.value || '').trim();
   if (!text) return alert('Empty text. Nothing to suggest.');
@@ -721,7 +691,6 @@ async function suggestCorrections(){
 
     renderAnnotations(original, corrected);
     analyzeStatus.textContent = '💡 Suggestions ready (see Annotated Changes).';
-
   } catch (e) {
     console.error(e);
     analyzeStatus.textContent = '❌ Suggest failed.';
@@ -732,92 +701,47 @@ async function suggestCorrections(){
 }
 
 /* =========================
-   Score / Annotated / Utils (renderScore robust)
+   Score / Annotated / Utils
 ========================= */
-function renderScore(payload, rubricCode){
+function renderScore(payload, rubricLabel){
   resultCard.classList.remove('hidden');
-  badgeRubric.textContent = rubricCode || '-';
+  badgeRubric.textContent = rubricLabel || '-';
 
-  const scoresObj = payload.scores || payload.score_map || payload.score || payload.summary || {};
-  const pick = (obj, names) => {
-    for (const n of names) {
-      if (obj == null) continue;
-      if (typeof obj[n] !== 'undefined' && obj[n] !== null) return obj[n];
-    }
-    return null;
-  };
+  const s = payload.scores || {};
+  scContent.textContent = num(s.content);
+  scComm.textContent    = num(s.communicative ?? s.communicative_achievement);
+  scOrg.textContent     = num(s.organisation);
+  scLang.textContent    = num(s.language);
+  scTotal.textContent   = num(s.total);
 
-  const contentScore = pick(scoresObj, ['content','Content','c','content_score','score_content']);
-  const commScore    = pick(scoresObj, ['communicative','communicative_achievement','comm','communicative_score','communicative']);
-  const orgScore     = pick(scoresObj, ['organisation','organization','org','organisation_score','organisation']);
-  const langScore    = pick(scoresObj, ['language','lang','language_score']);
-  const totalScore   = pick(scoresObj, ['total','overall','total_score','score_total','sum']);
-
-  const fallbackTotal = pick(payload, ['total','overall','score','score_total','total_score']);
-
-  scContent.textContent = (contentScore ?? '-');
-  scComm.textContent    = (commScore ?? '-');
-  scOrg.textContent     = (orgScore ?? '-');
-  scLang.textContent    = (langScore ?? '-');
-  scTotal.textContent   = (totalScore ?? fallbackTotal ?? '-');
-
-  const rationales = []
+  let rationales = []
     .concat(payload.rationales || [])
     .concat(payload.explanations || [])
     .concat(payload.criteria_explanations || [])
-    .concat(payload.rubric_breakdown || [])
-    .concat(payload.explanation || [])
-    .filter(Boolean);
+    .concat(payload.rubric_breakdown || []);
+
+  if (!rationales.length) {
+    rationales = buildFallbackRationales(s, rubricLabel);
+  }
 
   rationaleList.innerHTML = '';
   if (rationales.length) {
     for (const r of rationales) {
       const li = document.createElement('li');
-      li.textContent = (typeof r === 'string') ? r : JSON.stringify(r);
+      li.textContent = typeof r === 'string' ? r : JSON.stringify(r);
       rationaleList.appendChild(li);
     }
   } else {
-    // fallback: if payload.raw_text exists, display first lines
-    const raw = payload.raw_text || payload.raw_text_stripped || '';
-    if (raw) {
-      const lines = raw.split('\n').map(l=>l.trim()).filter(Boolean).slice(0,8);
-      for(const ln of lines){
-        const li = document.createElement('li'); li.textContent = ln;
-        rationaleList.appendChild(li);
-      }
-    } else {
-      const li = document.createElement('li');
-      li.textContent = 'No detailed explanations returned by the API.';
-      rationaleList.appendChild(li);
-    }
+    const li = document.createElement('li');
+    li.textContent = 'No detailed explanations are available for this score.';
+    rationaleList.appendChild(li);
   }
 
   suggestions.innerHTML = '';
-  const suggs = []
-    .concat(payload.suggestions || [])
-    .concat(payload.revision_suggestions || [])
-    .concat(payload.advice || [])
-    .filter(Boolean);
-
-  if (suggs.length) {
-    suggs.forEach(x=>{
-      const li = document.createElement('li'); li.textContent = (typeof x === 'string') ? x : JSON.stringify(x);
-      suggestions.appendChild(li);
-    });
-  } else {
-    const li = document.createElement('li'); li.textContent = 'No revision suggestions returned by the API.';
+  (payload.suggestions || []).forEach(x=>{
+    const li = document.createElement('li'); li.textContent = x;
     suggestions.appendChild(li);
-  }
-
-  // Inline diff: if provided by server, inject and show annotated panel
-  const inlineHtml = payload.inline_diff_html || payload.inline_diff || '';
-  if (inlineHtml && diffHtmlEl) {
-    diffHtmlEl.innerHTML = inlineHtml;
-    annotCard.classList.remove('hidden');
-    if (payload.original_text) origTextEl.textContent = payload.original_text;
-    if (payload.corrected_text) corrTextEl.textContent = payload.corrected_text;
-  }
-  window.__lastGrade = payload;
+  });
 }
 
 function renderAnnotations(original, corrected){
@@ -846,14 +770,58 @@ function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,
 function num(x){ return (x ?? '-'); }
 function humanSize(bytes){ const u=['B','KB','MB','GB']; let i=0,n=bytes||0; while(n>=1024&&i<u.length-1){n/=1024;i++;} return `${n.toFixed(1)} ${u[i]}`; }
 
+function buildFallbackRationales(scores, rubricLabel){
+  const out = [];
+  if (!scores) return out;
+
+  const mapping = {
+    Content: scores.content,
+    Communicative: scores.communicative ?? scores.communicative_achievement,
+    Organisation: scores.organisation,
+    Language: scores.language
+  };
+
+  Object.entries(mapping).forEach(([label, val])=>{
+    if (val === undefined || val === null || val === '-') return;
+    const n = Number(val);
+    if (Number.isNaN(n)) return;
+    out.push(makeBandExplanation(label, n, rubricLabel));
+  });
+
+  if (scores.total !== undefined && scores.total !== null && scores.total !== '-') {
+    const t = Number(scores.total);
+    if (!Number.isNaN(t)) {
+      out.push(`Overall total: ${t}/20 — this reflects the combined performance across all criteria in this rubric.`);
+    }
+  }
+
+  return out;
+}
+
+function makeBandExplanation(label, score, rubricLabel){
+  const name = rubricLabel || 'the selected rubric';
+  const base = bandTextForScore(score);
+  return `${label}: ${score}/5 — ${base} (according to ${name}).`;
+}
+
+function bandTextForScore(score){
+  const s = Number(score);
+  if (s >= 5) return 'Excellent performance; fully meets the top band descriptors for this criterion';
+  if (s >= 4) return 'Good performance with only minor weaknesses; mostly matches the higher band descriptors';
+  if (s >= 3) return 'Adequate but uneven; some key expectations from the rubric are met while others are only partially achieved';
+  if (s >= 2) return 'Limited performance; several rubric expectations are weak or missing for this criterion';
+  if (s >= 1) return 'Very limited performance; most rubric expectations are not met';
+  return 'No credit for this criterion (0); the response does not reach the minimum rubric expectations';
+}
+
 /* =========================
-   Image tools (stitch) + PDF preview
+   Image tools + PDF preview
 ========================= */
 async function stitchImages(files){
   const pieces = [];
   for (const f of files) {
     const dataURL = await readAsDataURL(f);
-    const compressed = await compressImage(dataURL, 1200, 0.9).catch(()=>dataURL);
+    const compressed = await compressImage(dataURL).catch(()=>dataURL);
     const img = await loadImage(compressed);
     pieces.push({ img, w: img.width, h: img.height });
   }
@@ -868,7 +836,7 @@ async function stitchImages(files){
     ctx.drawImage(p.img, 0, y, width, nh);
     y += nh;
   }
-  return out.toDataURL('image/jpeg', 0.92);
+  return out.toDataURL('image/jpeg', 0.95);
 }
 
 function showStitchedPreview(dataURL){
@@ -922,29 +890,40 @@ async function renderPdfFirstPage(file){
 }
 
 /* =========================
-   Title Snap (OCR)
+   Title Snap OCR
 ========================= */
-cameraTitleButton.addEventListener('click',()=>cameraTitleInput.click());
-cameraTitleInput.addEventListener('change', async (e)=>{
+cameraTitleButton.addEventListener('click', ()=>cameraTitleInput.click());
+uploadTitleButton.addEventListener('click', ()=>uploadTitleInput.click());
+cameraTitleInput.addEventListener('change', handleTitleImage);
+uploadTitleInput.addEventListener('change', handleTitleImage);
+
+async function handleTitleImage(e){
   const f = e.target.files?.[0]; if (!f) return;
   overlay.classList.add('show');
   try{
-    const fd = new FormData(); fd.append('file', f, f.name || 'title.jpg');
+    const srcFile = await normalizeImageFile(f, 1600, 0.95);
+    const fd = new FormData();
+    fd.append('file', srcFile, srcFile.name || 'title.jpg');
+    fd.append('mode', 'title');
     const res = await fetch(ORIGIN + '/api/ocr', { method:'POST', headers: { 'X-CSRF-TOKEN': CSRF }, body: fd });
     const json = await res.json().catch(()=>({}));
-    const t = (json.text || json.extracted || json.ocr || '').trim();
-    if (t) titleEl.value = t.slice(0, 200);
-    else alert('Failed to extract title text.');
+    const raw = (json.text || json.extracted || json.ocr || '').trim();
+    if (raw) {
+      const normalised = raw.replace(/\s+/g, ' ').trim();
+      titleEl.value = normalised;
+    } else {
+      alert('Failed to extract title text. Please try a clearer photo or type manually.');
+    }
   }catch(err){
     console.error(err); alert('Title OCR error.');
   }finally{
     overlay.classList.remove('show');
     e.target.value = '';
   }
-});
+}
 
 /* =========================
-   DOCX Export (include inline diff & revision suggestions)
+   DOCX Export
 ========================= */
 btnExportDocx.addEventListener('click', async (ev)=>{
   ev.preventDefault();
@@ -956,29 +935,21 @@ btnExportDocx.addEventListener('click', async (ev)=>{
     const corrected = (essayText.value || '').trim();
     if (!corrected) { alert('Nothing to export.'); return; }
 
-    const criterion_explanations = Array.from(document.querySelectorAll('#rationaleList li')).map(li => li.textContent).filter(Boolean);
-    const revision_suggestions = Array.from(document.querySelectorAll('#suggestions li')).map(li => li.textContent).filter(Boolean);
-
-    const inline_diff_html = (diffHtmlEl && diffHtmlEl.innerHTML) ? diffHtmlEl.innerHTML : '';
-
-    const original_text = (origTextEl && origTextEl.textContent) ? origTextEl.textContent : (lastOCRText || '');
-    const corrected_text = corrected;
-
+    const fromDom = Array.from(document.querySelectorAll('#rationaleList li')).map(li => li.textContent);
     const last = window.__lastGrade || {};
-    const scores = last.scores || last.score_map || last.score || { content: null, communicative: null, organisation: null, language: null, total: null };
+    const explanations = [
+      ...(last.rationales || []),
+      ...(last.explanations || []),
+      ...(last.criteria_explanations || []),
+      ...(last.rubric_breakdown || []),
+      ...fromDom
+    ].filter(Boolean).slice(0, 80);
 
     const payload = {
       title: (titleEl.value || 'Essay Report').slice(0, 200),
-      rubric_code: rubricEl.value || '',
-      rubric_text: rubricRef.value || '',
       extracted,
-      corrected: corrected_text,
-      original_text,
-      scores,
-      criterion_explanations,
-      revision_suggestions,
-      inline_diff_html,
-      raw_grade_payload: last
+      corrected,
+      explanations
     };
 
     const tryUrls = [
@@ -1037,7 +1008,7 @@ btnExportDocx.addEventListener('click', async (ev)=>{
 });
 
 /* =========================
-   Local History (same as before)
+   Local History
 ========================= */
 function pushHistory(item){
   history.unshift(item);
@@ -1053,7 +1024,7 @@ function renderHistory(){
         ${escapeHTML(h.time)} — ${escapeHTML(h.title||'(No title)')}
       </summary>
       <div class="mt-2 text-sm text-gray-700 space-y-2">
-        <p><strong>Rubric:</strong> ${escapeHTML(h.rubric||'-')}</p>
+        <p><strong>Rubric label:</strong> ${escapeHTML(h.rubric||'-')}</p>
         ${h.extracted ? `<div><strong>Extracted:</strong><br>${escapeHTML(h.extracted)}</div>`:''}
         ${h.corrected ? `<div><strong>Edited:</strong><br>${escapeHTML(h.corrected)}</div>`:''}
         ${(h.explanations||[]).length ? `
@@ -1074,13 +1045,12 @@ function renderHistory(){
       const i = +btn.getAttribute('data-idx');
       const h = history[i]; if(!h) return;
       titleEl.value = h.title || '';
-      rubricEl.value = h.rubric || 'SPM_P1';
+      // we keep current rubricRef; do not overwrite teacher's current rubric when loading history
       essayText.value = h.corrected || h.extracted || '';
       lastOCRText = h.extracted || '';
       window.scrollTo({ top: 0, behavior: 'smooth' });
       btnAnalyze.disabled = !(essayText.value || '').trim();
       btnSuggest.disabled = !(essayText.value || '').trim();
-      updateActionButtons();
     };
   });
   historyList.querySelectorAll('.btnDelete').forEach(btn=>{
@@ -1112,18 +1082,25 @@ btnClearHistory.addEventListener('click', ()=>{
   }
 });
 
-/* ===== helpers ===== */
-function compressImage(dataURL, maxWidth=1200, quality=0.9){
+/* ===== image helpers ===== */
+async function normalizeImageFile(file, maxWidth=1600, quality=0.95){
+  const dataURL = await readAsDataURL(file);
+  const compressed = await compressImage(dataURL, maxWidth, quality).catch(()=>dataURL);
+  const base = (file.name || 'image').replace(/\.[^.]+$/, '');
+  return dataURLtoFile(compressed, base + '.jpg');
+}
+
+function compressImage(dataURL, maxWidth=1600, quality=0.95){
   return new Promise((resolve,reject)=>{
     const img = new Image();
-    img.onload = ()=>{
-      const scale = Math.min(1, maxWidth / img.width);
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
+    img.onload = ()=>{ 
+      const scale = Math.min(1, maxWidth / img.width); 
+      const canvas = document.createElement('canvas');  
+      canvas.width = Math.round(img.width * scale);  
+      canvas.height = Math.round(img.height * scale); 
+      const ctx = canvas.getContext('2d'); 
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);  
+      resolve(canvas.toDataURL('image/jpeg', quality)); 
     };
     img.onerror = reject;
     img.src = dataURL;
