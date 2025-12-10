@@ -338,7 +338,6 @@ try { history = JSON.parse(localStorage.getItem('essayProHistory') || '[]'); } c
 
 /* =========================
    Rubric templates per part (REPLACED with user-provided strict rubrics)
-   (omitted here for brevity — use same templates as before or your custom ones)
 ========================= */
 const RUBRIC_TEMPLATES = {
   "SPM — Part 1": `SPM Writing — Part 1 — Assessment scale (5/3/1/0):
