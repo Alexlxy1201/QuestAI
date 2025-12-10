@@ -338,6 +338,7 @@ try { history = JSON.parse(localStorage.getItem('essayProHistory') || '[]'); } c
 
 /* =========================
    Rubric templates per part (REPLACED with user-provided strict rubrics)
+   (same as earlier — omitted here for brevity in this listing; keep as before)
 ========================= */
 const RUBRIC_TEMPLATES = {
   "SPM — Part 1": `SPM Writing — Part 1 — Assessment scale (5/3/1/0):
@@ -348,7 +349,7 @@ const RUBRIC_TEMPLATES = {
 2: Performances shared features of Score 1 and 3
 1: Task may be misunderstood; readers are minimally informed; mostly short, disconnected sentences; ideas are simple but not always communicated successfully; weak cohesion; incorrect use of punctuation; vocabulary mainly isolated words/phrases; limited control of simple grammar.
 0: Completely irrelevant.`,
-
+  // ... other templates unchanged ...
   "SPM — Part 2": `SPM Writing — Part 2 — Assessment scale:
 
 5: Content fully relevant; reader well informed, answer all the questions appropriately; conveys straightforward ideas using an appropriate text type and tone smoothly; coherent organization with a variety of cohesive devices; fairly wide everyday vocabulary with occasional misuse of less common words; good control of simple and some complex grammar; errors do not hinder communication.
@@ -386,7 +387,6 @@ const RUBRIC_TEMPLATES = {
 0: Content is totally irrelevant and any performance is below score 1.`
 };
 
-// apply initial template
 function applyRubricTemplateFromSelect() {
   const key = rubricEl.value;
   rubricRef.value = RUBRIC_TEMPLATES[key] || '';
@@ -693,7 +693,9 @@ function makeAnnotatedDiff(a, b){
   }
   while(i < at.length){ html += `<del>${escapeHTML(at[i++])}</del>`; }
   while(j < bt.length){ html += `<ins>${escapeHTML(bt[j++])}</ins>`; }
-  return html;
+  // Join tokens with spaces to avoid Word placing each token on new line
+  // Replace multiple whitespace tokens produced by tokenizer (if any)
+  return html.split(/(\s+)/).filter(Boolean).join(' ');
 }
 
 function tokenize(s){ const re=/[A-Za-z0-9’'’-]+|\s+|[^\sA-Za-z0-9]/g; const out=[]; let m; while((m=re.exec(s))){ out.push(m[0]); } return out.length?out:[s]; }
@@ -857,7 +859,20 @@ async function handleTitleImage(e){
 
 /* =========================
    DOCX Export (changed: include scores + diffHtml; no "Revision Suggestions" in DOCX)
+   Also ensure ins/del inline styles are present before sending
 ========================= */
+
+// ensure <ins>/<del> have inline styles so PHPWord/Word treats them as inline text
+function ensureInlineDiffStyles(html) {
+  if (!html) return html || '';
+  html = html.replace(/<ins(?![^>]*style=)([^>]*)>/gi, '<ins$1 style="background:#DCFCE7;text-decoration:none;display:inline;white-space:normal;">');
+  html = html.replace(/<del(?![^>]*style=)([^>]*)>/gi, '<del$1 style="background:#FEE2E2;text-decoration:line-through;display:inline;white-space:normal;">');
+  if (!/^\s*<(p|div)/i.test(html)) {
+    html = '<p style="margin:0;line-height:1.25;white-space:normal;">' + html + '</p>';
+  }
+  return html;
+}
+
 btnExportDocx.addEventListener('click', async (ev)=>{
   ev.preventDefault();
   const old = btnExportDocx.textContent;
@@ -866,7 +881,7 @@ btnExportDocx.addEventListener('click', async (ev)=>{
   try{
     const extracted = (lastOCRText || '').trim();
     const corrected = (essayText.value || '').trim();
-    if (!corrected) { alert('Nothing to export.'); return; }
+    if (!corrected) { alert('Nothing to export.'); btnExportDocx.disabled = false; btnExportDocx.textContent = old; return; }
 
     // collect explanations from DOM and last grade
     const fromDom = Array.from(document.querySelectorAll('#rationaleList li')).map(li => li.textContent);
@@ -895,6 +910,7 @@ btnExportDocx.addEventListener('click', async (ev)=>{
     if (!diffHtml) {
       diffHtml = makeAnnotatedDiff(extracted || '', corrected || '');
     }
+    diffHtml = ensureInlineDiffStyles(diffHtml);
 
     const payload = {
       title: (titleEl.value || 'Essay Report').slice(0, 200),
@@ -946,6 +962,7 @@ btnExportDocx.addEventListener('click', async (ev)=>{
           a.href = url; a.download = fname.endsWith('.docx') ? fname : (fname + '.docx');
           document.body.appendChild(a); a.click(); a.remove();
           URL.revokeObjectURL(url);
+          btnExportDocx.disabled = false; btnExportDocx.textContent = old;
           return;
         } else {
           try { console.warn('[Export] Not DOCX:', (await blob.text()).slice(0,300)); } catch(_){}
