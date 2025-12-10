@@ -225,7 +225,7 @@ PROMPT;
 
             $res = Http::withHeaders([
                 'Authorization' => "Bearer {$apiKey}",
-                'Content-Type'  => 'application/json',
+                'Content-Type' => 'application/json',
             ])->post("{$base}/chat/completions", [
                 'model' => $model,
                 'messages' => [
@@ -348,10 +348,8 @@ PROMPT;
 
             $section->addText("Inline Diff", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
             if ($inlineDiff) {
-                // Prepare simple inline-diff HTML for PhpWord (convert <ins>/<del> to styled <span>)
-                $prepared = $this->prepareInlineDiffSimple($inlineDiff);
-                // Use Html::addHtml with $isTrusted = true to preserve inline styles as much as possible
-                Html::addHtml($section, $prepared, false, true);
+                // Use native PhpWord API to build inline diff reliably
+                $this->addInlineDiffToSection($section, $inlineDiff);
             } else {
                 $section->addText("No inline diff data available.", ['italic' => true]);
             }
@@ -464,101 +462,94 @@ PROMPT;
      * Build inline diff between two texts and return HTML with <ins>/<del>.
      * Uses token-level LCS.
      */
-    /**
- * Build inline diff between two texts and return HTML with <ins>/<del>.
- * Improved: tokenizes by non-whitespace tokens (words/punct), ignores whitespace tokens
- * so the generated HTML will not contain lots of isolated whitespace fragments that
- * Word renders as separate lines.
- */
-private function makeInlineDiff(string $a, string $b): string
-{
-    // Tokenize into non-whitespace tokens (words, numbers, punctuation), preserving order.
-    $tokenizeNonWs = function(string $s) {
-        if ($s === '') return [];
-        // matches runs of non-whitespace characters
-        preg_match_all('/[^\s]+/u', $s, $m);
-        return $m[0] ?: [];
-    };
+    private function makeInlineDiff(string $a, string $b): string
+    {
+        // Tokenize into non-whitespace tokens (words, numbers, punctuation), preserving order.
+        $tokenizeNonWs = function(string $s) {
+            if ($s === '') return [];
+            // matches runs of non-whitespace characters
+            preg_match_all('/[^\s]+/u', $s, $m);
+            return $m[0] ?: [];
+        };
 
-    $A = $tokenizeNonWs($a);
-    $B = $tokenizeNonWs($b);
-    $n = count($A); $m = count($B);
+        $A = $tokenizeNonWs($a);
+        $B = $tokenizeNonWs($b);
+        $n = count($A); $m = count($B);
 
-    // quick path if identical
-    if ($n === 0 && $m === 0) return '<div></div>';
-    if ($A === $B) {
-        // join with spaces to produce clean inline text
-        $text = htmlspecialchars(implode(' ', $A), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
-        return '<div style="line-height:1.25;">' . $text . '</div>';
-    }
-
-    // build dp table for LCS
-    $dp = array_fill(0, $n+1, array_fill(0, $m+1, 0));
-    for ($i = $n - 1; $i >= 0; $i--) {
-        for ($j = $m - 1; $j >= 0; $j--) {
-            if ($A[$i] === $B[$j]) $dp[$i][$j] = $dp[$i+1][$j+1] + 1;
-            else $dp[$i][$j] = max($dp[$i+1][$j], $dp[$i][$j+1]);
+        // quick path if identical
+        if ($n === 0 && $m === 0) return '<div></div>';
+        if ($A === $B) {
+            // join with spaces to produce clean inline text
+            $text = htmlspecialchars(implode(' ', $A), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+            return '<div style="line-height:1.25;">' . $text . '</div>';
         }
-    }
 
-    // backtrack to LCS pairs
-    $i = 0; $j = 0;
-    $pairs = [];
-    while ($i < $n && $j < $m) {
-        if ($A[$i] === $B[$j]) {
-            $pairs[] = [$i, $j];
-            $i++; $j++;
-        } elseif ($dp[$i+1][$j] >= $dp[$i][$j+1]) {
-            $i++;
-        } else {
-            $j++;
+        // build dp table for LCS
+        $dp = array_fill(0, $n+1, array_fill(0, $m+1, 0));
+        for ($i = $n - 1; $i >= 0; $i--) {
+            for ($j = $m - 1; $j >= 0; $j--) {
+                if ($A[$i] === $B[$j]) $dp[$i][$j] = $dp[$i+1][$j+1] + 1;
+                else $dp[$i][$j] = max($dp[$i+1][$j], $dp[$i][$j+1]);
+            }
         }
-    }
 
-    // Build HTML by grouping consecutive deletions/insertions into single <del>/<ins> blocks.
-    $htmlParts = [];
-    $pi = 0; $pj = 0;
+        // backtrack to LCS pairs
+        $i = 0; $j = 0;
+        $pairs = [];
+        while ($i < $n && $j < $m) {
+            if ($A[$i] === $B[$j]) {
+                $pairs[] = [$i, $j];
+                $i++; $j++;
+            } elseif ($dp[$i+1][$j] >= $dp[$i][$j+1]) {
+                $i++;
+            } else {
+                $j++;
+            }
+        }
 
-    foreach ($pairs as [$ti, $tj]) {
-        // deletions from A between pi..ti-1
-        if ($pi < $ti) {
-            $delSlice = array_slice($A, $pi, $ti - $pi);
+        // Build HTML by grouping consecutive deletions/insertions into single <del>/<ins> blocks.
+        $htmlParts = [];
+        $pi = 0; $pj = 0;
+
+        foreach ($pairs as [$ti, $tj]) {
+            // deletions from A between pi..ti-1
+            if ($pi < $ti) {
+                $delSlice = array_slice($A, $pi, $ti - $pi);
+                $delText = htmlspecialchars(implode(' ', $delSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+                $htmlParts[] = "<del>{$delText}</del>";
+            }
+            // insertions from B between pj..tj-1
+            if ($pj < $tj) {
+                $insSlice = array_slice($B, $pj, $tj - $pj);
+                $insText = htmlspecialchars(implode(' ', $insSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+                $htmlParts[] = "<ins>{$insText}</ins>";
+            }
+            // common token
+            $common = htmlspecialchars($A[$ti], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+            $htmlParts[] = $common;
+            $pi = $ti + 1;
+            $pj = $tj + 1;
+        }
+
+        // remaining deletions
+        if ($pi < $n) {
+            $delSlice = array_slice($A, $pi, $n - $pi);
             $delText = htmlspecialchars(implode(' ', $delSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
             $htmlParts[] = "<del>{$delText}</del>";
         }
-        // insertions from B between pj..tj-1
-        if ($pj < $tj) {
-            $insSlice = array_slice($B, $pj, $tj - $pj);
+        // remaining insertions
+        if ($pj < $m) {
+            $insSlice = array_slice($B, $pj, $m - $pj);
             $insText = htmlspecialchars(implode(' ', $insSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
             $htmlParts[] = "<ins>{$insText}</ins>";
         }
-        // common token
-        $common = htmlspecialchars($A[$ti], ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
-        $htmlParts[] = $common;
-        $pi = $ti + 1;
-        $pj = $tj + 1;
+
+        // join with single spaces to avoid runs of inline elements collapsing unexpectedly
+        $html = implode(' ', $htmlParts);
+
+        // wrap in a div with modest line-height to improve Word rendering
+        return '<div style="line-height:1.25;">' . $html . '</div>';
     }
-
-    // remaining deletions
-    if ($pi < $n) {
-        $delSlice = array_slice($A, $pi, $n - $pi);
-        $delText = htmlspecialchars(implode(' ', $delSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
-        $htmlParts[] = "<del>{$delText}</del>";
-    }
-    // remaining insertions
-    if ($pj < $m) {
-        $insSlice = array_slice($B, $pj, $m - $pj);
-        $insText = htmlspecialchars(implode(' ', $insSlice), ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
-        $htmlParts[] = "<ins>{$insText}</ins>";
-    }
-
-    // join with single spaces to avoid runs of inline elements collapsing unexpectedly
-    $html = implode(' ', $htmlParts);
-
-    // wrap in a div with modest line-height to improve Word rendering
-    return '<div style="line-height:1.25;">' . $html . '</div>';
-}
-
 
     private function buildDocxAndGetUrl(string $title, string $extracted, string $corrected, array $explanations): string
     {
@@ -566,7 +557,7 @@ private function makeInlineDiff(string $a, string $b): string
             throw new \RuntimeException('PhpOffice\\PhpWord not installed. Run: composer require phpoffice/phpword');
         }
 
-        $phpWord = new \PhpOffice\PhpWord\PhpWord();
+        $phpWord = new \PhpWord();
         $phpWord->setDefaultFontName('Calibri');
         $phpWord->setDefaultFontSize(11);
 
@@ -603,50 +594,63 @@ private function makeInlineDiff(string $a, string $b): string
     }
 
     /**
-     * 简化版：把 <ins>/<del> 转为带样式的 <span>，达到 inline-diff 的视觉效果（新增：淡绿；删除：淡红 + 删除线）
-     * - 对输入做最小清理（collapse 空白），并 escape 内文以安全输出给 PhpWord。
+     * 使用 PhpWord 原生 API 将包含 <ins> / <del> / 普通文本 的 inline-diff HTML
+     * 加入到给定的 $section（单一段落 TextRun）。
+     *
+     * - $html: 可以是 makeInlineDiff() 输出的 HTML（含 <ins> / <del>）或前端传来的 diffHtml。
+     * - 新增: bgColor = DCFCE7
+     * - 删除: bgColor = FEE2E2 + strikethrough
+     *
+     * 说明：这个函数不会创建多段落 —— 所有内容放在同一个 TextRun（同一行）中，Word 会在需要处换行。
      */
-    private function prepareInlineDiffSimple(string $html): string
+    private function addInlineDiffToSection(\PhpOffice\PhpWord\Element\Section $section, string $html)
     {
-        $html = trim((string)$html);
-        if ($html === '') return '<div></div>';
-
-        // 1) 统一换行为空格并 collapse 多重空白
+        // Normalize whitespace/newlines
         $html = preg_replace("/\r\n|\r|\n/u", " ", $html);
         $html = preg_replace('/\s+/u', ' ', $html);
         $html = trim($html);
 
-        // 2) 将 <ins> 内容替换为带淡绿背景的 span
-        $html = preg_replace_callback('#<ins\b[^>]*>(.*?)</ins>#siu', function($m){
-            $inner = trim(preg_replace('/\s+/u', ' ', $m[1]));
-            $innerEsc = htmlspecialchars($inner, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
-            return "<span style=\"background:#DCFCE7;padding:0 .12rem;border-radius:.18rem;\">{$innerEsc}</span>";
-        }, $html);
-
-        // 3) 将 <del> 内容替换为带淡红背景并加删除线的 span
-        $html = preg_replace_callback('#<del\b[^>]*>(.*?)</del>#siu', function($m){
-            $inner = trim(preg_replace('/\s+/u', ' ', $m[1]));
-            $innerEsc = htmlspecialchars($inner, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
-            return "<span style=\"background:#FEE2E2;text-decoration:line-through;padding:0 .12rem;border-radius:.18rem;\">{$innerEsc}</span>";
-        }, $html);
-
-        // 4) 以 DOMDocument 做最终清理并保留已有 span 标签
-        libxml_use_internal_errors(true);
-        $doc = new \DOMDocument('1.0', 'UTF-8');
-        $wrapped = "<div>{$html}</div>";
-        $doc->loadHTML('<?xml encoding="utf-8" ?>' . $wrapped, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-        $body = $doc->getElementsByTagName('div')->item(0);
-        $out = '';
-        if ($body) {
-            foreach ($body->childNodes as $node) {
-                $out .= $doc->saveHTML($node);
-            }
-        } else {
-            $out = htmlspecialchars($html, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+        if ($html === '') {
+            $section->addText("No inline diff data available.", ['italic' => true]);
+            return;
         }
-        libxml_clear_errors();
 
-        // 5) wrap with modest styles to look nice in Word
-        return '<div style="line-height:1.25; font-size:11pt;">' . $out . '</div>';
+        // Split into parts preserving ins/del fragments
+        $parts = preg_split(
+            '/(<ins\b[^>]*>.*?<\/ins>|<del\b[^>]*>.*?<\/del>)/siu',
+            $html,
+            -1,
+            PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY
+        );
+
+        $textrun = $section->addTextRun();
+
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if ($part === '') continue;
+
+            if (preg_match('#^<ins\b[^>]*>(.*?)<\/ins>$#siu', $part, $m)) {
+                $inner = trim(preg_replace('/\s+/u', ' ', $m[1]));
+                $inner = html_entity_decode(strip_tags($inner), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $style = [
+                    'bgColor' => 'DCFCE7',
+                ];
+                $textrun->addText($inner, $style);
+                $textrun->addText(' ');
+            } elseif (preg_match('#^<del\b[^>]*>(.*?)<\/del>$#siu', $part, $m)) {
+                $inner = trim(preg_replace('/\s+/u', ' ', $m[1]));
+                $inner = html_entity_decode(strip_tags($inner), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $style = [
+                    'bgColor' => 'FEE2E2',
+                    'strikethrough' => true,
+                ];
+                $textrun->addText($inner, $style);
+                $textrun->addText(' ');
+            } else {
+                $txt = html_entity_decode(strip_tags($part), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                $textrun->addText($txt);
+                $textrun->addText(' ');
+            }
+        }
     }
 }
