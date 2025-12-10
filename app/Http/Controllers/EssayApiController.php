@@ -348,8 +348,10 @@ PROMPT;
 
             $section->addText("Inline Diff", ['bold' => true, 'size' => 13, 'color' => '1F4E79']);
             if ($inlineDiff) {
-                // Html::addHtml expects safe HTML; we already output <ins>/<del>
-                Html::addHtml($section, $inlineDiff, false, false);
+                // Prepare simple inline-diff HTML for PhpWord (convert <ins>/<del> to styled <span>)
+                $prepared = $this->prepareInlineDiffSimple($inlineDiff);
+                // Use Html::addHtml with $isTrusted = true to preserve inline styles as much as possible
+                Html::addHtml($section, $prepared, false, true);
             } else {
                 $section->addText("No inline diff data available.", ['italic' => true]);
             }
@@ -459,7 +461,7 @@ PROMPT;
     }
 
     /**
-     * Build simple inline diff between two texts and return HTML with <ins>/<del>.
+     * Build inline diff between two texts and return HTML with <ins>/<del>.
      * Uses token-level LCS.
      */
     /**
@@ -598,5 +600,53 @@ private function makeInlineDiff(string $a, string $b): string
         $writer->save($fullPath);
 
         return asset('storage/essay_reports/'.$filename);
+    }
+
+    /**
+     * 简化版：把 <ins>/<del> 转为带样式的 <span>，达到 inline-diff 的视觉效果（新增：淡绿；删除：淡红 + 删除线）
+     * - 对输入做最小清理（collapse 空白），并 escape 内文以安全输出给 PhpWord。
+     */
+    private function prepareInlineDiffSimple(string $html): string
+    {
+        $html = trim((string)$html);
+        if ($html === '') return '<div></div>';
+
+        // 1) 统一换行为空格并 collapse 多重空白
+        $html = preg_replace("/\r\n|\r|\n/u", " ", $html);
+        $html = preg_replace('/\s+/u', ' ', $html);
+        $html = trim($html);
+
+        // 2) 将 <ins> 内容替换为带淡绿背景的 span
+        $html = preg_replace_callback('#<ins\b[^>]*>(.*?)</ins>#siu', function($m){
+            $inner = trim(preg_replace('/\s+/u', ' ', $m[1]));
+            $innerEsc = htmlspecialchars($inner, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+            return "<span style=\"background:#DCFCE7;padding:0 .12rem;border-radius:.18rem;\">{$innerEsc}</span>";
+        }, $html);
+
+        // 3) 将 <del> 内容替换为带淡红背景并加删除线的 span
+        $html = preg_replace_callback('#<del\b[^>]*>(.*?)</del>#siu', function($m){
+            $inner = trim(preg_replace('/\s+/u', ' ', $m[1]));
+            $innerEsc = htmlspecialchars($inner, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+            return "<span style=\"background:#FEE2E2;text-decoration:line-through;padding:0 .12rem;border-radius:.18rem;\">{$innerEsc}</span>";
+        }, $html);
+
+        // 4) 以 DOMDocument 做最终清理并保留已有 span 标签
+        libxml_use_internal_errors(true);
+        $doc = new \DOMDocument('1.0', 'UTF-8');
+        $wrapped = "<div>{$html}</div>";
+        $doc->loadHTML('<?xml encoding="utf-8" ?>' . $wrapped, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $body = $doc->getElementsByTagName('div')->item(0);
+        $out = '';
+        if ($body) {
+            foreach ($body->childNodes as $node) {
+                $out .= $doc->saveHTML($node);
+            }
+        } else {
+            $out = htmlspecialchars($html, ENT_QUOTES|ENT_SUBSTITUTE, 'UTF-8');
+        }
+        libxml_clear_errors();
+
+        // 5) wrap with modest styles to look nice in Word
+        return '<div style="line-height:1.25; font-size:11pt;">' . $out . '</div>';
     }
 }
